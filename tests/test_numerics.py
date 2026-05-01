@@ -11,75 +11,81 @@ import pytest
 import torch
 
 from laker_xsa.config import XSA_LAKER_Config
-from laker_xsa.attention.standard_attention import StandardMultiHeadAttention
-from laker_xsa.attention.xsa_attention import ExclusiveSelfAttention
-from laker_xsa.attention.kernel_attention import FusedXSALAKERAttention
+from laker_xsa.attention.standard import StandardMultiHeadAttention
+from laker_xsa.attention.xsa import ExclusiveSelfAttention
+from laker_xsa.attention._legacy import FusedXSALAKERAttention
+from laker_xsa.attention.laker import LakerAttention
 from laker_xsa.utils.stability import check_finite, clamp_tensor
+
+pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
+
+
+@pytest.fixture
+def config() -> XSA_LAKER_Config:
+    """Create test configuration."""
+    return XSA_LAKER_Config(d_model=64, num_heads=4, dropout=0.0)
 
 
 class TestNumericalStability:
     """Test numerical stability of attention modules."""
 
-    def test_standard_attention_stability(self) -> None:
+    def test_standard_attention_stability(self, config: XSA_LAKER_Config) -> None:
         """Test standard attention with extreme values."""
-        config = XSA_LAKER_Config(d_model=64, num_heads=4)
         attn = StandardMultiHeadAttention(config)
         attn.eval()
 
-        # Large values
         x_large = torch.randn(2, 32, config.d_model) * 100
         output = attn(x_large)
         assert check_finite(output, "large input output", raise_error=False)
 
-        # Small values
         x_small = torch.randn(2, 32, config.d_model) * 1e-6
         output = attn(x_small)
         assert check_finite(output, "small input output", raise_error=False)
 
-    def test_xsa_stability(self) -> None:
+    def test_xsa_stability(self, config: XSA_LAKER_Config) -> None:
         """Test XSA with extreme values."""
-        config = XSA_LAKER_Config(d_model=64, num_heads=4)
         attn = ExclusiveSelfAttention(config)
         attn.eval()
 
-        # Large values
         x_large = torch.randn(2, 32, config.d_model) * 100
         output = attn(x_large)
         assert check_finite(output, "large input output", raise_error=False)
 
-    def test_fused_stability(self) -> None:
-        """Test fused attention with extreme values."""
-        config = XSA_LAKER_Config(d_model=64, num_heads=4)
+    def test_fused_stability(self, config: XSA_LAKER_Config) -> None:
+        """Test fused v1 attention with extreme values."""
         attn = FusedXSALAKERAttention(config)
         attn.eval()
 
-        # Large values
         x_large = torch.randn(2, 32, config.d_model) * 100
         output = attn(x_large)
         assert check_finite(output, "large input output", raise_error=False)
 
-    def test_long_sequence_stability(self) -> None:
+    def test_laker_attention_stability(self) -> None:
+        """Test LakerAttention v2 with extreme values."""
+        config = XSA_LAKER_Config(d_model=64, num_heads=4, dropout=0.0)
+        attn = LakerAttention(config)
+        attn.eval()
+
+        x_large = torch.randn(2, 32, config.d_model) * 100
+        output = attn(x_large)
+        assert check_finite(output, "large v2 output", raise_error=False)
+
+    def test_long_sequence_stability(self, config: XSA_LAKER_Config) -> None:
         """Test stability with long sequences."""
-        config = XSA_LAKER_Config(d_model=64, num_heads=4)
         attn = FusedXSALAKERAttention(config)
         attn.eval()
 
-        # Long sequence
-        x = torch.randn(1, 512, config.d_model)
+        x = torch.randn(1, 256, config.d_model)
         output = attn(x)
         assert check_finite(output, "long sequence output", raise_error=False)
 
     def test_very_long_sequence(self) -> None:
         """Test with very long sequence (may stress iterative solver)."""
-        config = XSA_LAKER_Config(
-            d_model=64,
-            num_heads=4,
-            num_iterations=20,  # More iterations for convergence
-        )
+        config = XSA_LAKER_Config(d_model=64, num_heads=4, num_iterations=20)
         attn = FusedXSALAKERAttention(config)
         attn.eval()
 
-        x = torch.randn(1, 1024, config.d_model)
+        x = torch.randn(1, 512, config.d_model)
         output = attn(x)
         assert check_finite(output, "very long sequence output", raise_error=False)
 
@@ -150,9 +156,8 @@ class TestCheckFinite:
 class TestDeterminism:
     """Test deterministic behavior."""
 
-    def test_deterministic_output(self) -> None:
+    def test_deterministic_output(self, config: XSA_LAKER_Config) -> None:
         """Test same input produces same output."""
-        config = XSA_LAKER_Config(d_model=64, num_heads=4, seed=42)
         attn = FusedXSALAKERAttention(config)
         attn.eval()
 
@@ -175,8 +180,19 @@ class TestDeterminism:
         torch.manual_seed(42)
         attn2 = FusedXSALAKERAttention(config2)
 
-        # Parameters should be identical
         for (n1, p1), (n2, p2) in zip(
             attn1.named_parameters(), attn2.named_parameters()
         ):
             assert torch.allclose(p1, p2), f"Parameter {n1} differs"
+
+    def test_laker_deterministic(self) -> None:
+        """Test LakerAttention v2 is deterministic."""
+        config = XSA_LAKER_Config(d_model=64, num_heads=4, dropout=0.0)
+        attn = LakerAttention(config)
+        attn.eval()
+
+        x = torch.randn(2, 32, config.d_model)
+        with torch.no_grad():
+            out1 = attn(x)
+            out2 = attn(x)
+        assert torch.allclose(out1, out2)

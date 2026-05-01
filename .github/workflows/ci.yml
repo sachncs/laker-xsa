@@ -36,11 +36,11 @@ jobs:
 
     - name: Lint with pylint
       run: |
-        pylint src/laker_xsa/ --rcfile=pyproject.toml
+        pylint laker_xsa/ --rcfile=pyproject.toml
 
     - name: Type check with mypy
       run: |
-        mypy src/laker_xsa/ --ignore-missing-imports
+        mypy laker_xsa/ --ignore-missing-imports
 
     - name: Run tests
       run: |

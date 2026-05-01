@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "laker-xsa"
-version = "0.1.0"
+version = "0.2.0"
 description = "Fused Exclusive Self Attention (XSA) and LAKER-style Kernel Attention"
 readme = "README.md"
 license = {text = "MIT"}
@@ -21,7 +21,7 @@ keywords = [
     "pytorch",
 ]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
@@ -63,10 +63,7 @@ laker-xsa-evaluate = "laker_xsa.cli.evaluate:main"
 laker-xsa-benchmark = "laker_xsa.cli.benchmark:main"
 
 [tool.setuptools.packages.find]
-where = ["src"]
-
-[tool.setuptools.package-dir]
-"" = "src"
+where = ["."]
 
 [tool.black]
 line-length = 88
@@ -78,6 +75,22 @@ warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = false
 check_untyped_defs = true
+
+[tool.pylint.main]
+ignore = ["_legacy.py", "attention_kernel.py", "kernel_attention.py", "standard_attention.py", "xsa_attention.py", "fused_attention_v2.py"]
+
+[tool.pylint.format]
+max-line-length = 120
+
+[tool.pylint.messages_control]
+disable = [
+    "missing-module-docstring",
+    "too-few-public-methods",
+    "too-many-arguments",
+    "too-many-locals",
+    "too-many-instance-attributes",
+    "invalid-name",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

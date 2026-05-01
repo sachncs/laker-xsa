@@ -11,7 +11,7 @@ import torch
 
 from laker_xsa.config import XSA_LAKER_Config
 from laker_xsa.solver.preconditioner import LearnedPreconditioner
-from laker_xsa.solver.conjugate_gradient import conjugate_gradient_solve, matvec_with_kernel
+from laker_xsa.solver.conjugate_gradient import pcg_solve, apply_kernel_operator
 
 
 @pytest.fixture
@@ -94,16 +94,15 @@ class TestConjugateGradient:
 
         b = torch.randn(batch, num_heads, seq_len, head_dim)
 
-        x, iterations = conjugate_gradient_solve(
-            kernel, b, lambda_reg=0.1, max_iterations=100, tolerance=1e-6
+        x = pcg_solve(
+            kernel, b, lambda_reg=torch.tensor(0.1), max_iterations=100, tolerance=1e-6
         )
 
         # Check solution quality
-        residual = b - matvec_with_kernel(kernel, x, lambda_reg=0.1)
+        residual = b - apply_kernel_operator(kernel, x, torch.tensor(0.1))
         residual_norm = residual.norm().item()
 
         assert residual_norm < 1.0  # Should converge reasonably
-        assert iterations <= 100
 
     def test_cg_with_preconditioner(self) -> None:
         """Test CG with preconditioner."""
@@ -114,13 +113,16 @@ class TestConjugateGradient:
         b = torch.randn(batch, num_heads, seq_len, head_dim)
 
         # Simple diagonal preconditioner
-        def precond(r: torch.Tensor) -> torch.Tensor:
-            return r * 0.1
+        def apply_precond(r: torch.Tensor, data: torch.Tensor) -> torch.Tensor:
+            return r * data
 
-        x, iterations = conjugate_gradient_solve(
-            kernel, b, lambda_reg=0.1,
+        precond_data = torch.tensor(0.1)
+
+        x = pcg_solve(
+            kernel, b, lambda_reg=torch.tensor(0.1),
             max_iterations=100, tolerance=1e-6,
-            preconditioner=precond
+            precond_data=precond_data,
+            apply_preconditioner=apply_precond,
         )
 
         assert torch.isfinite(x).all()
@@ -132,7 +134,7 @@ class TestConjugateGradient:
         kernel = torch.eye(seq_len).unsqueeze(0).unsqueeze(0) * 2.0
         b = torch.ones(batch, num_heads, seq_len, head_dim)
 
-        x, _ = conjugate_gradient_solve(kernel, b, lambda_reg=0.0, x0=None)
+        x = pcg_solve(kernel, b, lambda_reg=torch.tensor(0.0), x0=None)
 
         # For K = 2I and b = 1, solution should be x = 0.5
         expected = torch.ones_like(b) * 0.5

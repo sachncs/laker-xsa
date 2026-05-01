@@ -11,12 +11,14 @@ import pytest
 import torch
 
 from laker_xsa.config import XSA_LAKER_Config
-from laker_xsa.attention.standard_attention import StandardMultiHeadAttention
-from laker_xsa.attention.xsa_attention import ExclusiveSelfAttention
-from laker_xsa.attention.kernel_attention import FusedXSALAKERAttention
+from laker_xsa.attention.standard import StandardMultiHeadAttention
+from laker_xsa.attention.xsa import ExclusiveSelfAttention
+from laker_xsa.attention._legacy import FusedXSALAKERAttention
 from laker_xsa.model.transformer_block import XSALAKERTransformerBlock
 from laker_xsa.model.full_model import XSALAKERTransformer
 from laker_xsa.utils.tensor_ops import verify_tensor_shapes
+
+pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
 
 
 class TestAttentionShapes:
