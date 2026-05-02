@@ -18,11 +18,15 @@ Two variants are provided:
 
 from __future__ import annotations
 
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union, cast
 
 import torch
 from torch import nn
 import torch.nn.functional as F
+
+PreconditionerData = Union[
+    torch.Tensor, Tuple[torch.Tensor, Optional[torch.Tensor]], None
+]
 
 
 class LakerPreconditioner(nn.Module):
@@ -75,19 +79,13 @@ class LakerPreconditioner(nn.Module):
 
         # For 'fast' mode: learnable diagonal + low-rank factors
         if mode == "fast" and rank is not None and rank > 0:
-            self.diag_scale = nn.Parameter(
-                torch.ones(1, num_heads, 1)
-            )
+            self.diag_scale = nn.Parameter(torch.ones(1, num_heads, 1))
             self.lr_base = nn.Parameter(
                 torch.randn(num_heads, max_seq_len, rank) * 0.01
             )
-            self.lr_importance = nn.Parameter(
-                torch.zeros(num_heads, rank)
-            )
+            self.lr_importance = nn.Parameter(torch.zeros(num_heads, rank))
         elif mode == "diagonal":
-            self.diag_scale = nn.Parameter(
-                torch.ones(1, num_heads, 1)
-            )
+            self.diag_scale = nn.Parameter(torch.ones(1, num_heads, 1))
             self.register_buffer("lr_base", torch.empty(0, 0, 0))
             self.register_buffer("lr_importance", torch.empty(0, 0))
         else:
@@ -97,13 +95,18 @@ class LakerPreconditioner(nn.Module):
 
         # Forward pass counter for periodic updates
         self.register_buffer("step_counter", torch.zeros(1, dtype=torch.long))
-        self.cached_preconditioner: Optional[Tuple[torch.Tensor, ...]] = None
+        self.cached_preconditioner: Optional[
+            Union[
+                Tuple[torch.Tensor],
+                Tuple[torch.Tensor, Optional[torch.Tensor]],
+            ]
+        ] = None
 
     def generate_angular_samples(
         self,
         kernel: torch.Tensor,
         lambda_reg: torch.Tensor,
-    ) -> torch.Tensor:
+    ) -> PreconditionerData:
         """
         Generate angular samples ubar_k from the kernel system.
 
@@ -137,7 +140,9 @@ class LakerPreconditioner(nn.Module):
             u = Kz + lambda_reg * z
 
             # Normalize to unit vector
-            u_norm = torch.linalg.vector_norm(u, dim=-2, keepdim=True)  # pylint: disable=not-callable
+            u_norm = torch.linalg.vector_norm(
+                u, dim=-2, keepdim=True
+            )  # pylint: disable=not-callable
             ubar = u / (u_norm + self.eps_safeguard)
 
             ubar_list.append(ubar.squeeze(-1))
@@ -194,16 +199,22 @@ class LakerPreconditioner(nn.Module):
             # outer product u @ u^T
             outer = torch.einsum("...i,...j->...ij", u, u)
 
-            denom_sum = denom_sum + outer / (denom.unsqueeze(-1).unsqueeze(-1) + self.eps_safeguard)
+            denom_sum = denom_sum + outer / (
+                denom.unsqueeze(-1).unsqueeze(-1) + self.eps_safeguard
+            )
 
         # F_gamma
         scale = n / N_r
-        F_gamma = scale * denom_sum + gamma * torch.eye(n, device=device, dtype=dtype).unsqueeze(0).unsqueeze(0)
+        F_gamma = scale * denom_sum + gamma * torch.eye(
+            n, device=device, dtype=dtype
+        ).unsqueeze(0).unsqueeze(0)
         F_gamma = F_gamma / (1.0 + gamma / n)
 
         # Shrinkage
         rho = self.rho
-        Sigma_tilde = (1.0 - rho) * F_gamma + rho * torch.eye(n, device=device, dtype=dtype).unsqueeze(0).unsqueeze(0)
+        Sigma_tilde = (1.0 - rho) * F_gamma + rho * torch.eye(
+            n, device=device, dtype=dtype
+        ).unsqueeze(0).unsqueeze(0)
 
         # Trace normalization
         trace = torch.diagonal(Sigma_tilde, dim1=-2, dim2=-1).sum(dim=-1, keepdim=True)
@@ -226,7 +237,9 @@ class LakerPreconditioner(nn.Module):
         dtype = kernel.dtype
 
         # Generate angular samples
-        ubar_samples = self.generate_angular_samples(kernel, lambda_reg)
+        ubar_samples = cast(
+            torch.Tensor, self.generate_angular_samples(kernel, lambda_reg)
+        )
 
         # Initialize Sigma = I
         eye = torch.eye(n, device=device, dtype=dtype)
@@ -238,7 +251,9 @@ class LakerPreconditioner(nn.Module):
             Sigma = Sigma_new
 
         # Extract P = Sigma^{-1/2} via eigendecomposition
-        eigenvalues, eigenvectors = torch.linalg.eigh(Sigma)  # pylint: disable=not-callable
+        eigenvalues, eigenvectors = torch.linalg.eigh(
+            Sigma
+        )  # pylint: disable=not-callable
 
         # Clamp eigenvalues for numerical stability
         eigenvalues = torch.clamp(eigenvalues, min=self.eps)
@@ -247,7 +262,7 @@ class LakerPreconditioner(nn.Module):
         inv_sqrt_eig = eigenvalues.pow(-0.5)
         P = eigenvectors @ (inv_sqrt_eig.unsqueeze(-1) * eigenvectors.transpose(-2, -1))
 
-        return P
+        return cast(torch.Tensor, P)
 
     def fast_preconditioner(
         self,
@@ -274,7 +289,9 @@ class LakerPreconditioner(nn.Module):
         # Diagonal part: use kernel diagonal + lambda for scaling
         kernel_diag = torch.diagonal(kernel, dim1=-2, dim2=-1)
         # softplus ensures positivity, important for preconditioner quality
-        diag = F.softplus(kernel_diag + lambda_reg.squeeze(-1).squeeze(-1))  # pylint: disable=not-callable
+        diag = F.softplus(
+            kernel_diag + lambda_reg.squeeze(-1).squeeze(-1)
+        )  # pylint: disable=not-callable
         diag = diag * self.diag_scale.abs() + self.eps
 
         # Low-rank factor
@@ -298,10 +315,12 @@ class LakerPreconditioner(nn.Module):
         self,
         kernel: torch.Tensor,
         lambda_reg: torch.Tensor,
-    ) -> torch.Tensor:
+    ) -> PreconditionerData:
         """Jacobi-style diagonal preconditioner."""
         kernel_diag = torch.diagonal(kernel, dim1=-2, dim2=-1)
-        diag = F.softplus(kernel_diag + lambda_reg.squeeze(-1).squeeze(-1))  # pylint: disable=not-callable
+        diag = F.softplus(
+            kernel_diag + lambda_reg.squeeze(-1).squeeze(-1)
+        )  # pylint: disable=not-callable
         return diag * self.diag_scale.abs() + self.eps
 
     def compute_preconditioner(
@@ -311,7 +330,7 @@ class LakerPreconditioner(nn.Module):
         seq_len: int,
         force_update: bool = False,
         update_frequency: int = 1,
-    ) -> torch.Tensor:
+    ) -> PreconditionerData:
         """
         Main entry point. Returns preconditioner application data.
 
@@ -328,21 +347,23 @@ class LakerPreconditioner(nn.Module):
             For 'diagonal': diag tensor (batch, num_heads, n).
         """
         should_update = force_update or (
-            update_frequency > 0
-            and (self.step_counter.item() % update_frequency == 0)
+            update_frequency > 0 and (int(self.step_counter[0]) % update_frequency == 0)
         )
 
         if self.mode == "cccp":
             if should_update or self.cached_preconditioner is None:
                 P = self.cccp_preconditioner(kernel, lambda_reg)
                 self.cached_preconditioner = (P,)
-            return self.cached_preconditioner[0]
+            return cast(Tuple[torch.Tensor], self.cached_preconditioner)[0]
 
         if self.mode == "fast":
             if should_update or self.cached_preconditioner is None:
                 diag, lr = self.fast_preconditioner(kernel, lambda_reg, seq_len)
                 self.cached_preconditioner = (diag, lr)
-            return self.cached_preconditioner
+            return cast(
+                Tuple[torch.Tensor, Optional[torch.Tensor]],
+                self.cached_preconditioner,
+            )
 
         if self.mode == "diagonal":
             return self.diagonal_preconditioner(kernel, lambda_reg)
@@ -352,7 +373,7 @@ class LakerPreconditioner(nn.Module):
     def apply_preconditioner(
         self,
         residual: torch.Tensor,
-        precond_data,
+        precond_data: PreconditionerData,
     ) -> torch.Tensor:
         """
         Apply preconditioner: P @ residual.
@@ -369,21 +390,25 @@ class LakerPreconditioner(nn.Module):
 
         if self.mode == "cccp":
             # P is (batch, num_heads, n, n), apply via matmul
-            P = precond_data
+            P = cast(torch.Tensor, precond_data)
             return torch.matmul(P, residual)
 
         if self.mode == "fast":
-            diag, lr_factor = precond_data
+            diag, lr_factor = cast(
+                Tuple[torch.Tensor, Optional[torch.Tensor]], precond_data
+            )
             # Diagonal: element-wise
             out = residual * diag.unsqueeze(-1)
             # Low-rank: U @ (U^T @ r)
             if lr_factor is not None:
                 UT_r = torch.matmul(lr_factor.transpose(-2, -1), residual)
                 out = out + torch.matmul(lr_factor, UT_r)
-            return out
+            return cast(torch.Tensor, out)
 
         if self.mode == "diagonal":
-            return residual * precond_data.unsqueeze(-1)
+            return cast(
+                torch.Tensor, residual * cast(torch.Tensor, precond_data).unsqueeze(-1)
+            )
 
         return residual
 
@@ -394,7 +419,7 @@ class LakerPreconditioner(nn.Module):
         seq_len: int,
         force_update: bool = False,
         update_frequency: int = 1,
-    ) -> torch.Tensor:
+    ) -> PreconditionerData:
         """Compute and return preconditioner application data.
 
         This is the primary nn.Module entry point. Increments internal step
@@ -405,3 +430,8 @@ class LakerPreconditioner(nn.Module):
         )
         self.step_counter.add_(1)
         return precond_data
+
+    step_counter: torch.Tensor
+    diag_scale: torch.Tensor
+    lr_base: torch.Tensor
+    lr_importance: torch.Tensor

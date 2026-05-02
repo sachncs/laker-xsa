@@ -33,10 +33,10 @@ from torch.utils.data import DataLoader, Dataset
 from laker_xsa.config import XSA_LAKER_Config
 from laker_xsa.model.full_model import XSALAKERTransformer
 
-
 # Try to import datasets, fall back to synthetic
 try:
     from datasets import load_dataset
+
     HAS_DATASETS = True
 except ImportError:
     HAS_DATASETS = False
@@ -87,7 +87,7 @@ class SimpleTokenizer:
 
         # Sort by frequency and take top vocab_size - 2
         sorted_words = sorted(word_counts.items(), key=lambda x: -x[1])
-        for word, _ in sorted_words[:self.vocab_size - 2]:
+        for word, _ in sorted_words[: self.vocab_size - 2]:
             self.word2idx[word] = self.next_idx
             self.idx2word[self.next_idx] = word
             self.next_idx += 1
@@ -108,7 +108,9 @@ class SimpleTokenizer:
 
 
 def create_synthetic_dataset(
-    num_samples: int, max_length: int, vocab_size: int,
+    num_samples: int,
+    max_length: int,
+    vocab_size: int,
 ) -> Tuple[List[str], List[int]]:
     """
     Create synthetic sentiment dataset.
@@ -116,12 +118,47 @@ def create_synthetic_dataset(
     Positive reviews contain words from positive set.
     Negative reviews contain words from negative set.
     """
-    positive_words = ["great", "excellent", "amazing", "wonderful", "fantastic",
-                      "love", "best", "perfect", "beautiful", "brilliant"]
-    negative_words = ["terrible", "awful", "horrible", "worst", "bad",
-                      "hate", "boring", "stupid", "waste", "poor"]
-    neutral_words = ["the", "a", "is", "was", "it", "this", "that", "movie",
-                     "film", "and", "but", "very", "really", "so", "just"]
+    positive_words = [
+        "great",
+        "excellent",
+        "amazing",
+        "wonderful",
+        "fantastic",
+        "love",
+        "best",
+        "perfect",
+        "beautiful",
+        "brilliant",
+    ]
+    negative_words = [
+        "terrible",
+        "awful",
+        "horrible",
+        "worst",
+        "bad",
+        "hate",
+        "boring",
+        "stupid",
+        "waste",
+        "poor",
+    ]
+    neutral_words = [
+        "the",
+        "a",
+        "is",
+        "was",
+        "it",
+        "this",
+        "that",
+        "movie",
+        "film",
+        "and",
+        "but",
+        "very",
+        "really",
+        "so",
+        "just",
+    ]
 
     texts = []
     labels = []
@@ -147,7 +184,8 @@ def create_synthetic_dataset(
 
 
 def load_imdb_dataset(
-    max_samples: int = 5000, max_length: int = 256,
+    max_samples: int = 5000,
+    max_length: int = 256,
 ) -> Tuple[List[str], List[int], int]:
     """Load IMDB dataset."""
     if not HAS_DATASETS:
@@ -159,8 +197,8 @@ def load_imdb_dataset(
         dataset = load_dataset("imdb")
         train_texts = dataset["train"]["text"][:max_samples]
         train_labels = dataset["train"]["label"][:max_samples]
-        test_texts = dataset["test"]["text"][:max_samples // 2]
-        test_labels = dataset["test"]["label"][:max_samples // 2]
+        test_texts = dataset["test"]["text"][: max_samples // 2]
+        test_labels = dataset["test"]["label"][: max_samples // 2]
 
         # Build tokenizer vocabulary
         tokenizer = SimpleTokenizer(vocab_size=5000)
@@ -174,7 +212,8 @@ def load_imdb_dataset(
 
 
 def load_agnews_dataset(
-    max_samples: int = 5000, max_length: int = 256,
+    max_samples: int = 5000,
+    max_length: int = 256,
 ) -> Tuple:
     """Load AG News classification dataset."""
     if not HAS_DATASETS:
@@ -185,8 +224,8 @@ def load_agnews_dataset(
         dataset = load_dataset("ag_news")
         train_texts = dataset["train"]["text"][:max_samples]
         train_labels = dataset["train"]["label"][:max_samples]
-        test_texts = dataset["test"]["text"][:max_samples // 2]
-        test_labels = dataset["test"]["label"][:max_samples // 2]
+        test_texts = dataset["test"]["text"][: max_samples // 2]
+        test_labels = dataset["test"]["label"][: max_samples // 2]
 
         tokenizer = SimpleTokenizer(vocab_size=5000)
         tokenizer.fit(train_texts + test_texts)
@@ -257,7 +296,9 @@ def train_classifier(
 ) -> Dict[str, List[float]]:
     """Train classifier and return history."""
     model = model.to(device)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.01)
+    optimizer = torch.optim.AdamW(
+        model.parameters(), lr=learning_rate, weight_decay=0.01
+    )
     criterion = nn.CrossEntropyLoss()
 
     train_losses = []
@@ -314,8 +355,10 @@ def train_classifier(
         val_losses.append(epoch_loss / len(val_loader))
         val_accs.append(correct / total)
 
-        print(f"  Epoch {epoch + 1}: Train Loss={train_losses[-1]:.4f}, "
-              f"Train Acc={train_accs[-1]:.4f}, Val Acc={val_accs[-1]:.4f}")
+        print(
+            f"  Epoch {epoch + 1}: Train Loss={train_losses[-1]:.4f}, "
+            f"Train Acc={train_accs[-1]:.4f}, Val Acc={val_accs[-1]:.4f}"
+        )
 
     return {
         "train_losses": train_losses,
@@ -361,7 +404,9 @@ def evaluate_classifier(
 
     precision = tp / (tp + fp) if (tp + fp) > 0 else 0
     recall = tp / (tp + fn) if (tp + fn) > 0 else 0
-    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0
+    f1 = (
+        2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0
+    )
 
     return accuracy, f1
 
@@ -494,7 +539,10 @@ def run_nlp_benchmark(
         print(f"  Final Train Loss: {history['train_losses'][-1]:.4f}")
 
     # Compute comparison
-    if "standard" in results["attention_types"] and "fused" in results["attention_types"]:
+    if (
+        "standard" in results["attention_types"]
+        and "fused" in results["attention_types"]
+    ):
         std_acc = results["attention_types"]["standard"]["test_accuracy"]
         fused_acc = results["attention_types"]["fused"]["test_accuracy"]
         std_f1 = results["attention_types"]["standard"]["test_f1"]
@@ -502,7 +550,8 @@ def run_nlp_benchmark(
 
         results["comparison"] = {
             "accuracy_improvement": fused_acc - std_acc,
-            "accuracy_improvement_pct": ((fused_acc - std_acc) / max(std_acc, 0.01)) * 100,
+            "accuracy_improvement_pct": ((fused_acc - std_acc) / max(std_acc, 0.01))
+            * 100,
             "f1_improvement": fused_f1 - std_f1,
             "f1_improvement_pct": ((fused_f1 - std_f1) / max(std_f1, 0.01)) * 100,
         }
@@ -510,10 +559,14 @@ def run_nlp_benchmark(
         print(f"\n{'=' * 60}")
         print("COMPARISON SUMMARY")
         print("=" * 60)
-        print(f"Accuracy Improvement: {results['comparison']['accuracy_improvement']:.4f} "
-              f"({results['comparison']['accuracy_improvement_pct']:.1f}%)")
-        print(f"F1 Improvement: {results['comparison']['f1_improvement']:.4f} "
-              f"({results['comparison']['f1_improvement_pct']:.1f}%)")
+        print(
+            f"Accuracy Improvement: {results['comparison']['accuracy_improvement']:.4f} "
+            f"({results['comparison']['accuracy_improvement_pct']:.1f}%)"
+        )
+        print(
+            f"F1 Improvement: {results['comparison']['f1_improvement']:.4f} "
+            f"({results['comparison']['f1_improvement_pct']:.1f}%)"
+        )
 
     return results
 
@@ -521,8 +574,12 @@ def run_nlp_benchmark(
 def main() -> None:
     """Main entry point."""
     parser = argparse.ArgumentParser(description="NLP Sentiment Benchmark")
-    parser.add_argument("--dataset", type=str, default="synthetic",
-                        choices=["synthetic", "imdb", "agnews"])
+    parser.add_argument(
+        "--dataset",
+        type=str,
+        default="synthetic",
+        choices=["synthetic", "imdb", "agnews"],
+    )
     parser.add_argument("--max-length", type=int, default=256)
     parser.add_argument("--d-model", type=int, default=128)
     parser.add_argument("--num-heads", type=int, default=4)
@@ -540,7 +597,9 @@ def main() -> None:
     print("=" * 60)
     print(f"Dataset: {args.dataset}")
     print(f"Max Length: {args.max_length}")
-    print(f"Model: d_model={args.d_model}, heads={args.num_heads}, layers={args.num_layers}")
+    print(
+        f"Model: d_model={args.d_model}, heads={args.num_heads}, layers={args.num_layers}"
+    )
 
     results = run_nlp_benchmark(
         dataset_name=args.dataset,

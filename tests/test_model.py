@@ -82,7 +82,9 @@ class TestTransformerBlock:
         out = block(x)
         assert out.shape == x.shape
 
-    @pytest.mark.parametrize("attn_type", ["standard", "xsa", "kernel", "fused", "fused_v2"])
+    @pytest.mark.parametrize(
+        "attn_type", ["standard", "xsa", "kernel", "fused", "fused_v2"]
+    )
     def test_all_attention_types(self, attn_type: str) -> None:
         cfg = XSA_LAKER_Config(d_model=64, num_heads=4, dropout=0.0)
         block = XSALAKERTransformerBlock(cfg, d_ff=128, attention_type=attn_type)

@@ -18,9 +18,7 @@ from laker_xsa.attention._legacy import (
     FusedXSALAKERAttention,
 )
 
-pytestmark = pytest.mark.filterwarnings(
-    "ignore::DeprecationWarning"
-)
+pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
 
 
 @pytest.fixture
@@ -48,19 +46,25 @@ def sample_input(config: XSA_LAKER_Config) -> torch.Tensor:
 class TestStandardMultiHeadAttention:
     """Tests for StandardMultiHeadAttention."""
 
-    def test_output_shape(self, config: XSA_LAKER_Config, sample_input: torch.Tensor) -> None:
+    def test_output_shape(
+        self, config: XSA_LAKER_Config, sample_input: torch.Tensor
+    ) -> None:
         """Test that output shape matches input shape."""
         attn = StandardMultiHeadAttention(config)
         output = attn(sample_input)
         assert output.shape == sample_input.shape
 
-    def test_output_finite(self, config: XSA_LAKER_Config, sample_input: torch.Tensor) -> None:
+    def test_output_finite(
+        self, config: XSA_LAKER_Config, sample_input: torch.Tensor
+    ) -> None:
         """Test that output contains only finite values."""
         attn = StandardMultiHeadAttention(config)
         output = attn(sample_input)
         assert torch.isfinite(output).all()
 
-    def test_gradient_flow(self, config: XSA_LAKER_Config, sample_input: torch.Tensor) -> None:
+    def test_gradient_flow(
+        self, config: XSA_LAKER_Config, sample_input: torch.Tensor
+    ) -> None:
         """Test that gradients flow through module."""
         attn = StandardMultiHeadAttention(config)
         x = sample_input.clone().requires_grad_(True)
@@ -84,13 +88,17 @@ class TestStandardMultiHeadAttention:
 class TestExclusiveSelfAttention:
     """Tests for ExclusiveSelfAttention."""
 
-    def test_output_shape(self, config: XSA_LAKER_Config, sample_input: torch.Tensor) -> None:
+    def test_output_shape(
+        self, config: XSA_LAKER_Config, sample_input: torch.Tensor
+    ) -> None:
         """Test that output shape matches input shape."""
         attn = ExclusiveSelfAttention(config)
         output = attn(sample_input)
         assert output.shape == sample_input.shape
 
-    def test_output_finite(self, config: XSA_LAKER_Config, sample_input: torch.Tensor) -> None:
+    def test_output_finite(
+        self, config: XSA_LAKER_Config, sample_input: torch.Tensor
+    ) -> None:
         """Test that output contains only finite values."""
         attn = ExclusiveSelfAttention(config)
         output = attn(sample_input)
@@ -99,8 +107,11 @@ class TestExclusiveSelfAttention:
     def test_xsa_exclusion(self, config: XSA_LAKER_Config) -> None:
         """Test that XSA excludes self-components from output."""
         cfg = XSA_LAKER_Config(
-            d_model=64, num_heads=4, head_dim=16,
-            dropout=0.0, xsa_mode="subtract_projection",
+            d_model=64,
+            num_heads=4,
+            head_dim=16,
+            dropout=0.0,
+            xsa_mode="subtract_projection",
         )
         attn = ExclusiveSelfAttention(cfg)
         attn.eval()
@@ -112,7 +123,9 @@ class TestExclusiveSelfAttention:
             v = attn.qkv_proj.w_v(x)
             v = v.view(batch, seq_len, cfg.num_heads, cfg.head_dim).transpose(1, 2)
             output = attn(x)
-            output = output.view(batch, seq_len, cfg.num_heads, cfg.head_dim).transpose(1, 2)
+            output = output.view(batch, seq_len, cfg.num_heads, cfg.head_dim).transpose(
+                1, 2
+            )
 
             for i in range(seq_len):
                 out_i = output[:, :, i, :]
@@ -120,9 +133,13 @@ class TestExclusiveSelfAttention:
                 cos_sim = torch.nn.functional.cosine_similarity(out_i, v_i, dim=-1)
                 assert cos_sim.abs().mean() < 0.5
 
-    def test_zero_diagonal_mode(self, config: XSA_LAKER_Config, sample_input: torch.Tensor) -> None:
+    def test_zero_diagonal_mode(
+        self, config: XSA_LAKER_Config, sample_input: torch.Tensor
+    ) -> None:
         """Test XSA with zero_diagonal mode."""
-        cfg = XSA_LAKER_Config(d_model=64, num_heads=4, head_dim=16, dropout=0.0, xsa_mode="zero_diagonal")
+        cfg = XSA_LAKER_Config(
+            d_model=64, num_heads=4, head_dim=16, dropout=0.0, xsa_mode="zero_diagonal"
+        )
         attn = ExclusiveSelfAttention(cfg)
         output = attn(sample_input)
         assert output.shape == sample_input.shape
@@ -130,7 +147,9 @@ class TestExclusiveSelfAttention:
 
     def test_mask_mode(self) -> None:
         """Test XSA with explicit mask mode."""
-        cfg = XSA_LAKER_Config(d_model=64, num_heads=4, head_dim=16, dropout=0.0, xsa_mode="mask")
+        cfg = XSA_LAKER_Config(
+            d_model=64, num_heads=4, head_dim=16, dropout=0.0, xsa_mode="mask"
+        )
         attn = ExclusiveSelfAttention(cfg)
         x = torch.randn(2, 32, cfg.d_model)
         output = attn(x)
@@ -141,19 +160,25 @@ class TestExclusiveSelfAttention:
 class TestKernelAttentionRegression:
     """Tests for KernelAttentionRegression (deprecated v1)."""
 
-    def test_output_shape(self, config: XSA_LAKER_Config, sample_input: torch.Tensor) -> None:
+    def test_output_shape(
+        self, config: XSA_LAKER_Config, sample_input: torch.Tensor
+    ) -> None:
         """Test that output shape matches input shape."""
         attn = KernelAttentionRegression(config)
         output = attn(sample_input)
         assert output.shape == sample_input.shape
 
-    def test_output_finite(self, config: XSA_LAKER_Config, sample_input: torch.Tensor) -> None:
+    def test_output_finite(
+        self, config: XSA_LAKER_Config, sample_input: torch.Tensor
+    ) -> None:
         """Test that output contains only finite values."""
         attn = KernelAttentionRegression(config)
         output = attn(sample_input)
         assert torch.isfinite(output).all()
 
-    def test_gradient_flow(self, config: XSA_LAKER_Config, sample_input: torch.Tensor) -> None:
+    def test_gradient_flow(
+        self, config: XSA_LAKER_Config, sample_input: torch.Tensor
+    ) -> None:
         """Test that gradients flow through module."""
         attn = KernelAttentionRegression(config)
         x = sample_input.clone().requires_grad_(True)
@@ -167,7 +192,9 @@ class TestKernelAttentionRegression:
         """Test different kernel types."""
         for kernel_type in ["rbf", "linear", "cosine"]:
             config = XSA_LAKER_Config(
-                d_model=64, num_heads=4, kernel_type=kernel_type,
+                d_model=64,
+                num_heads=4,
+                kernel_type=kernel_type,
             )
             attn = KernelAttentionRegression(config)
             output = attn(sample_input)
@@ -178,19 +205,25 @@ class TestKernelAttentionRegression:
 class TestFusedXSALAKERAttention:
     """Tests for FusedXSALAKERAttention (deprecated v1)."""
 
-    def test_output_shape(self, config: XSA_LAKER_Config, sample_input: torch.Tensor) -> None:
+    def test_output_shape(
+        self, config: XSA_LAKER_Config, sample_input: torch.Tensor
+    ) -> None:
         """Test that output shape matches input shape."""
         attn = FusedXSALAKERAttention(config)
         output = attn(sample_input)
         assert output.shape == sample_input.shape
 
-    def test_output_finite(self, config: XSA_LAKER_Config, sample_input: torch.Tensor) -> None:
+    def test_output_finite(
+        self, config: XSA_LAKER_Config, sample_input: torch.Tensor
+    ) -> None:
         """Test that output contains only finite values."""
         attn = FusedXSALAKERAttention(config)
         output = attn(sample_input)
         assert torch.isfinite(output).all()
 
-    def test_gradient_flow(self, config: XSA_LAKER_Config, sample_input: torch.Tensor) -> None:
+    def test_gradient_flow(
+        self, config: XSA_LAKER_Config, sample_input: torch.Tensor
+    ) -> None:
         """Test that gradients flow through module."""
         attn = FusedXSALAKERAttention(config)
         x = sample_input.clone().requires_grad_(True)
@@ -211,8 +244,12 @@ class TestFusedXSALAKERAttention:
         with torch.no_grad():
             q = attn.w_q(x)
             k = attn.w_k(x)
-            q = q.view(batch, seq_len, config.num_heads, config.head_dim).transpose(1, 2)
-            k = k.view(batch, seq_len, config.num_heads, config.head_dim).transpose(1, 2)
+            q = q.view(batch, seq_len, config.num_heads, config.head_dim).transpose(
+                1, 2
+            )
+            k = k.view(batch, seq_len, config.num_heads, config.head_dim).transpose(
+                1, 2
+            )
 
             kernel = attn.kernel_fn(q, k)
             kernel = attn.apply_xsa_to_kernel(kernel)

@@ -36,7 +36,6 @@ from laker_xsa.model.full_model import XSALAKERTransformer
 from laker_xsa.attention.standard_attention import StandardMultiHeadAttention
 from laker_xsa.attention.kernel_attention import FusedXSALAKERAttention
 
-
 # =============================================================================
 # Task Definitions
 # =============================================================================
@@ -91,7 +90,7 @@ def create_induction_task(
         for batch in range(num_samples):
             # Find next occurrence of current token
             current_token = input_ids[batch, i]
-            next_pos = torch.where(input_ids[batch, i + 1:] == current_token)[0]
+            next_pos = torch.where(input_ids[batch, i + 1 :] == current_token)[0]
             if len(next_pos) > 0:
                 target_ids[batch, i] = input_ids[batch, i + 1 + next_pos[0]]
             else:
@@ -121,11 +120,14 @@ def create_addition_task(
 
     # Add separator token (vocab_size - 1) at position seq_len - 2
     sep_token = vocab_size - 1
-    input_ids = torch.cat([
-        numbers,
-        torch.full((num_samples, 1), sep_token),
-        torch.zeros((num_samples, 1), dtype=torch.long)
-    ], dim=1)
+    input_ids = torch.cat(
+        [
+            numbers,
+            torch.full((num_samples, 1), sep_token),
+            torch.zeros((num_samples, 1), dtype=torch.long),
+        ],
+        dim=1,
+    )
 
     # Target: sum at separator position + 1
     target_ids = torch.zeros_like(input_ids)
@@ -183,7 +185,9 @@ def train_model(
 ) -> Dict[str, List[float]]:
     """Train model and return training history."""
     model = model.to(device)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.01)
+    optimizer = torch.optim.AdamW(
+        model.parameters(), lr=learning_rate, weight_decay=0.01
+    )
     criterion = nn.CrossEntropyLoss()
 
     train_losses = []
@@ -288,7 +292,7 @@ def measure_conditioning(
     # Get kernel matrix from first layer
     with torch.no_grad():
         block = model.blocks[0]
-        if hasattr(block.attention, 'kernel_fn'):
+        if hasattr(block.attention, "kernel_fn"):
             q = block.attention.w_q(x)
             k = block.attention.w_k(x)
             q = q.view(1, seq_len, config.num_heads, config.head_dim).transpose(1, 2)
@@ -336,9 +340,9 @@ def measure_gradient_norm(
         if param.grad is not None:
             param_norm = param.grad.norm().item()
             grad_norms[name] = param_norm
-            total_norm += param_norm ** 2
+            total_norm += param_norm**2
 
-    total_norm = total_norm ** 0.5
+    total_norm = total_norm**0.5
 
     return {
         "total_gradient_norm": total_norm,
@@ -504,24 +508,36 @@ def run_comparative_analysis(
         print(f"\n{attention_type.upper()} Results:")
         print(f"  Test Loss: {test_loss:.4f}")
         print(f"  Test Accuracy: {test_accuracy:.4f}")
-        print(f"  Condition Estimate: {conditioning.get('condition_estimate', 'N/A'):.4f}")
+        print(
+            f"  Condition Estimate: {conditioning.get('condition_estimate', 'N/A'):.4f}"
+        )
         print(f"  Total Gradient Norm: {grad_metrics['total_gradient_norm']:.4f}")
-        print(f"  Inference Speed: {speed_metrics['samples_per_second']:.1f} samples/sec")
+        print(
+            f"  Inference Speed: {speed_metrics['samples_per_second']:.1f} samples/sec"
+        )
 
     # Compute improvement metrics
-    if "standard" in results["attention_types"] and "fused" in results["attention_types"]:
+    if (
+        "standard" in results["attention_types"]
+        and "fused" in results["attention_types"]
+    ):
         std_acc = results["attention_types"]["standard"]["test_accuracy"]
         fused_acc = results["attention_types"]["fused"]["test_accuracy"]
 
         std_loss = results["attention_types"]["standard"]["test_loss"]
         fused_loss = results["attention_types"]["fused"]["test_loss"]
 
-        std_speed = results["attention_types"]["standard"]["speed_metrics"]["samples_per_second"]
-        fused_speed = results["attention_types"]["fused"]["speed_metrics"]["samples_per_second"]
+        std_speed = results["attention_types"]["standard"]["speed_metrics"][
+            "samples_per_second"
+        ]
+        fused_speed = results["attention_types"]["fused"]["speed_metrics"][
+            "samples_per_second"
+        ]
 
         results["comparison"] = {
             "accuracy_improvement": fused_acc - std_acc,
-            "accuracy_improvement_pct": ((fused_acc - std_acc) / max(std_acc, 0.01)) * 100,
+            "accuracy_improvement_pct": ((fused_acc - std_acc) / max(std_acc, 0.01))
+            * 100,
             "loss_reduction": std_loss - fused_loss,
             "loss_reduction_pct": ((std_loss - fused_loss) / max(std_loss, 0.01)) * 100,
             "speed_slowdown": std_speed / max(fused_speed, 0.01),
@@ -530,10 +546,14 @@ def run_comparative_analysis(
         print(f"\n{'=' * 60}")
         print("COMPARISON SUMMARY")
         print("=" * 60)
-        print(f"Accuracy Improvement: {results['comparison']['accuracy_improvement']:.4f} "
-              f"({results['comparison']['accuracy_improvement_pct']:.1f}%)")
-        print(f"Loss Reduction: {results['comparison']['loss_reduction']:.4f} "
-              f"({results['comparison']['loss_reduction_pct']:.1f}%)")
+        print(
+            f"Accuracy Improvement: {results['comparison']['accuracy_improvement']:.4f} "
+            f"({results['comparison']['accuracy_improvement_pct']:.1f}%)"
+        )
+        print(
+            f"Loss Reduction: {results['comparison']['loss_reduction']:.4f} "
+            f"({results['comparison']['loss_reduction_pct']:.1f}%)"
+        )
         print(f"Speed Slowdown: {results['comparison']['speed_slowdown']:.2f}x")
 
     return results
@@ -607,7 +627,9 @@ def main() -> None:
     print("=" * 60)
     print(f"Task: {args.task}")
     print(f"Sequence Length: {args.seq_len}")
-    print(f"Model: d_model={args.d_model}, heads={args.num_heads}, layers={args.num_layers}")
+    print(
+        f"Model: d_model={args.d_model}, heads={args.num_heads}, layers={args.num_layers}"
+    )
     print(f"Training: {args.epochs} epochs, lr={args.lr}")
 
     results = run_comparative_analysis(

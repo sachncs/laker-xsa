@@ -168,7 +168,9 @@ def long_context_benchmark(
         results["results"][seq_len]["standard"] = evaluate_attention_module(
             attn_std, config, seq_len, num_trials
         )
-        logger.info("  Standard: acc=%.3f", results["results"][seq_len]["standard"]["accuracy"])
+        logger.info(
+            "  Standard: acc=%.3f", results["results"][seq_len]["standard"]["accuracy"]
+        )
 
         # XSA
         attn_xsa = ExclusiveSelfAttention(config).to(device)
@@ -182,13 +184,17 @@ def long_context_benchmark(
         results["results"][seq_len]["kernel"] = evaluate_attention_module(
             attn_kernel, config, seq_len, num_trials
         )
-        logger.info("  Kernel: acc=%.3f", results["results"][seq_len]["kernel"]["accuracy"])
+        logger.info(
+            "  Kernel: acc=%.3f", results["results"][seq_len]["kernel"]["accuracy"]
+        )
 
         # Fused
         attn_fused = FusedXSALAKERAttention(config).to(device)
         results["results"][seq_len]["fused"] = evaluate_attention_module(
             attn_fused, config, seq_len, num_trials
         )
-        logger.info("  Fused: acc=%.3f", results["results"][seq_len]["fused"]["accuracy"])
+        logger.info(
+            "  Fused: acc=%.3f", results["results"][seq_len]["fused"]["accuracy"]
+        )
 
     return results

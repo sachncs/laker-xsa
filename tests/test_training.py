@@ -14,10 +14,10 @@ from laker_xsa.model.full_model import XSALAKERTransformer
 from laker_xsa.training.losses import label_smoothing_cross_entropy
 from laker_xsa.training.trainer import Trainer, TrainingConfig
 
-
 # ---------------------------------------------------------------------------
 # label_smoothing_cross_entropy
 # ---------------------------------------------------------------------------
+
 
 class TestLabelSmoothingCrossEntropy:
     """Tests for label_smoothing_cross_entropy."""
@@ -68,13 +68,17 @@ class TestLabelSmoothingCrossEntropy:
     def test_invalid_smoothing_negative(self) -> None:
         with pytest.raises(ValueError, match="Label smoothing must be"):
             label_smoothing_cross_entropy(
-                torch.randn(4, 10), torch.randint(0, 10, (4,)), smoothing=-0.1,
+                torch.randn(4, 10),
+                torch.randint(0, 10, (4,)),
+                smoothing=-0.1,
             )
 
     def test_invalid_smoothing_one(self) -> None:
         with pytest.raises(ValueError, match="Label smoothing must be"):
             label_smoothing_cross_entropy(
-                torch.randn(4, 10), torch.randint(0, 10, (4,)), smoothing=1.0,
+                torch.randn(4, 10),
+                torch.randint(0, 10, (4,)),
+                smoothing=1.0,
             )
 
     def test_gradient_flow(self) -> None:
@@ -89,6 +93,7 @@ class TestLabelSmoothingCrossEntropy:
 # ---------------------------------------------------------------------------
 # TrainingConfig
 # ---------------------------------------------------------------------------
+
 
 class TestTrainingConfig:
     """Tests for TrainingConfig dataclass."""
@@ -110,6 +115,7 @@ class TestTrainingConfig:
 # ---------------------------------------------------------------------------
 # Trainer
 # ---------------------------------------------------------------------------
+
 
 class TestTrainer:
     """Tests for Trainer class."""

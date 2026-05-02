@@ -62,7 +62,9 @@ def label_smoothing_cross_entropy(
 
     # NLL loss (negative log likelihood of correct class)
     mask = labels != ignore_index
-    nll_loss = -log_probs.gather(dim=-1, index=labels.clamp(min=0).unsqueeze(-1)).squeeze()
+    nll_loss = -log_probs.gather(
+        dim=-1, index=labels.clamp(min=0).unsqueeze(-1)
+    ).squeeze()
 
     # Smooth loss (negative mean log probability)
     smooth_loss = -log_probs.sum(dim=-1)

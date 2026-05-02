@@ -132,7 +132,9 @@ class XSALAKERTransformerBlock(nn.Module):
         d_ff: Optional[int] = None,
         dropout: float = 0.0,
         activation: Literal["gelu", "relu"] = "gelu",
-        attention_type: Literal["standard", "xsa", "kernel", "fused", "fused_v2"] = "fused_v2",
+        attention_type: Literal[
+            "standard", "xsa", "kernel", "fused", "fused_v2"
+        ] = "fused_v2",
     ) -> None:
         """
         Initialize Transformer block.
@@ -204,3 +206,5 @@ class XSALAKERTransformerBlock(nn.Module):
         x = x + mlp_out  # Residual connection
 
         return x
+
+    attention: nn.Module

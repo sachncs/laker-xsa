@@ -98,7 +98,9 @@ class LearnedPreconditioner(nn.Module):
         batch = kernel_diag.shape[0]
 
         # Diagonal from kernel diagonal + learned scale
-        diag_precond = F.softplus(kernel_diag) * self.diag_scale + self.reg  # pylint: disable=not-callable
+        diag_precond = (
+            F.softplus(kernel_diag) * self.diag_scale + self.reg
+        )  # pylint: disable=not-callable
 
         # Low-rank factor
         lr_precond: Optional[torch.Tensor] = None

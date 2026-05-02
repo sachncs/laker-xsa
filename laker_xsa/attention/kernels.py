@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import math
 
+from typing import cast
+
 import torch
 from torch import nn
 import torch.nn.functional as F
@@ -51,13 +53,9 @@ class AttentionKernel(nn.Module):
         self.eps = eps
 
         if learnable_temperature:
-            self.log_temperature = nn.Parameter(
-                torch.tensor(math.log(temperature))
-            )
+            self.log_temperature = nn.Parameter(torch.tensor(math.log(temperature)))
         else:
-            self.register_buffer(
-                "log_temperature", torch.tensor(math.log(temperature))
-            )
+            self.register_buffer("log_temperature", torch.tensor(math.log(temperature)))
 
     @property
     def temperature(self) -> torch.Tensor:
@@ -96,3 +94,24 @@ class AttentionKernel(nn.Module):
 
 
 __all__ = ["AttentionKernel"]
+
+
+def compute_kernel_matrix(
+    q: torch.Tensor,
+    k: torch.Tensor,
+    normalize_qk: bool = True,
+    symmetric: bool = False,
+    temperature: float = 1.0,
+    eps: float = 1e-6,
+) -> torch.Tensor:
+    """Backward-compatible helper retained for deprecated imports."""
+    head_dim = int(q.shape[-1])
+    kernel = AttentionKernel(
+        head_dim=head_dim,
+        temperature=temperature,
+        symmetric=symmetric,
+        learnable_temperature=False,
+        normalize_qk=normalize_qk,
+        eps=eps,
+    )
+    return cast(torch.Tensor, kernel(q, k))

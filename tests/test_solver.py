@@ -38,7 +38,12 @@ class TestLearnedPreconditioner:
 
         assert diag_precond.shape == (batch, config.num_heads, seq_len)
         assert lr_precond is not None
-        assert lr_precond.shape == (batch, config.num_heads, seq_len, config.preconditioner_rank)
+        assert lr_precond.shape == (
+            batch,
+            config.num_heads,
+            seq_len,
+            config.preconditioner_rank,
+        )
 
     def test_output_positive(self, config: XSA_LAKER_Config) -> None:
         """Test that diagonal preconditioner is positive."""
@@ -59,7 +64,9 @@ class TestLearnedPreconditioner:
         diag_precond, lr_precond = precond(kernel_diag, seq_len)
 
         residual = torch.randn(batch, config.num_heads, seq_len, config.head_dim)
-        precond_residual = precond.apply_precondition(residual, diag_precond, lr_precond)
+        precond_residual = precond.apply_precondition(
+            residual, diag_precond, lr_precond
+        )
 
         assert precond_residual.shape == residual.shape
         assert torch.isfinite(precond_residual).all()
@@ -119,8 +126,11 @@ class TestConjugateGradient:
         precond_data = torch.tensor(0.1)
 
         x = pcg_solve(
-            kernel, b, lambda_reg=torch.tensor(0.1),
-            max_iterations=100, tolerance=1e-6,
+            kernel,
+            b,
+            lambda_reg=torch.tensor(0.1),
+            max_iterations=100,
+            tolerance=1e-6,
             precond_data=precond_data,
             apply_preconditioner=apply_precond,
         )

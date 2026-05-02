@@ -90,12 +90,12 @@ class XSAZeroDiagonal:
         attn_output: torch.Tensor,
         **kwargs,
     ) -> torch.Tensor:
-        return attn_output  # Diagonal already zeroed in scores; no post-processing needed
+        return (
+            attn_output  # Diagonal already zeroed in scores; no post-processing needed
+        )
 
 
-def build_xsa_strategy(
-    mode: str, scale: nn.Parameter, eps: float
-) -> XSAStrategy:
+def build_xsa_strategy(mode: str, scale: nn.Parameter, eps: float) -> XSAStrategy:
     """Factory for XSA exclusion strategies."""
     if mode == "subtract_projection":
         return XSAProjectionRemoval(scale, eps)
@@ -131,9 +131,7 @@ class ExclusiveSelfAttention(BaseMultiHeadAttention):
         else:
             self.register_buffer("xsa_scale", torch.ones(1))
 
-        self.strategy = build_xsa_strategy(
-            config.xsa_mode, self.xsa_scale, config.eps
-        )
+        self.strategy = build_xsa_strategy(config.xsa_mode, self.xsa_scale, config.eps)
         self.uses_diagonal_zeroing = config.xsa_mode == "zero_diagonal"
 
     def compute_attention(
@@ -152,7 +150,9 @@ class ExclusiveSelfAttention(BaseMultiHeadAttention):
 
         if self.xsa_mode == "mask":
             n = scores.shape[-1]
-            self_mask = torch.eye(n, device=scores.device, dtype=torch.bool).view(1, 1, n, n)
+            self_mask = torch.eye(n, device=scores.device, dtype=torch.bool).view(
+                1, 1, n, n
+            )
             if mask is None:
                 mask = ~self_mask
             else:

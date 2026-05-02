@@ -23,12 +23,14 @@ class TestCreateCausalMask:
 
     def test_lower_triangular(self) -> None:
         mask = create_causal_mask(4)
-        expected = torch.tensor([
-            [True, False, False, False],
-            [True, True, False, False],
-            [True, True, True, False],
-            [True, True, True, True],
-        ])
+        expected = torch.tensor(
+            [
+                [True, False, False, False],
+                [True, True, False, False],
+                [True, True, True, False],
+                [True, True, True, True],
+            ]
+        )
         assert torch.equal(mask[0], expected)
 
     def test_on_device(self) -> None:
@@ -64,10 +66,12 @@ class TestCreatePaddingMask:
         assert not mask.any()
 
     def test_batch_multiple(self) -> None:
-        padding = torch.tensor([
-            [True, False, False],
-            [False, True, False],
-        ])
+        padding = torch.tensor(
+            [
+                [True, False, False],
+                [False, True, False],
+            ]
+        )
         mask = create_padding_mask(padding)
         assert mask.shape == (2, 1, 1, 3)
 

@@ -19,83 +19,153 @@ class TestCLITrain:
     """Smoke tests for training CLI."""
 
     def test_train_runs_minimal(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(sys, "argv", [
-            "train",
-            "--d-model", "32",
-            "--num-heads", "2",
-            "--num-layers", "1",
-            "--vocab-size", "20",
-            "--num-epochs", "1",
-            "--batch-size", "2",
-            "--seq-len", "8",
-            "--num-samples", "10",
-            "--attention-type", "standard",
-            "--seed", "42",
-        ])
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "train",
+                "--d-model",
+                "32",
+                "--num-heads",
+                "2",
+                "--num-layers",
+                "1",
+                "--vocab-size",
+                "20",
+                "--num-epochs",
+                "1",
+                "--batch-size",
+                "2",
+                "--seq-len",
+                "8",
+                "--num-samples",
+                "10",
+                "--attention-type",
+                "standard",
+                "--seed",
+                "42",
+            ],
+        )
         train_main()
 
     def test_train_with_xsa(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(sys, "argv", [
-            "train",
-            "--d-model", "32",
-            "--num-heads", "2",
-            "--num-layers", "1",
-            "--vocab-size", "20",
-            "--num-epochs", "1",
-            "--batch-size", "2",
-            "--seq-len", "8",
-            "--num-samples", "10",
-            "--attention-type", "xsa",
-            "--seed", "42",
-        ])
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "train",
+                "--d-model",
+                "32",
+                "--num-heads",
+                "2",
+                "--num-layers",
+                "1",
+                "--vocab-size",
+                "20",
+                "--num-epochs",
+                "1",
+                "--batch-size",
+                "2",
+                "--seq-len",
+                "8",
+                "--num-samples",
+                "10",
+                "--attention-type",
+                "xsa",
+                "--seed",
+                "42",
+            ],
+        )
         train_main()
 
     def test_train_with_kernel(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(sys, "argv", [
-            "train",
-            "--d-model", "32",
-            "--num-heads", "2",
-            "--num-layers", "1",
-            "--vocab-size", "20",
-            "--num-epochs", "1",
-            "--batch-size", "2",
-            "--seq-len", "8",
-            "--num-samples", "10",
-            "--attention-type", "kernel",
-            "--seed", "42",
-        ])
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "train",
+                "--d-model",
+                "32",
+                "--num-heads",
+                "2",
+                "--num-layers",
+                "1",
+                "--vocab-size",
+                "20",
+                "--num-epochs",
+                "1",
+                "--batch-size",
+                "2",
+                "--seq-len",
+                "8",
+                "--num-samples",
+                "10",
+                "--attention-type",
+                "kernel",
+                "--seed",
+                "42",
+            ],
+        )
         train_main()
 
     def test_train_with_fused(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(sys, "argv", [
-            "train",
-            "--d-model", "32",
-            "--num-heads", "2",
-            "--num-layers", "1",
-            "--vocab-size", "20",
-            "--num-epochs", "1",
-            "--batch-size", "2",
-            "--seq-len", "8",
-            "--num-samples", "10",
-            "--attention-type", "fused",
-            "--seed", "42",
-        ])
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "train",
+                "--d-model",
+                "32",
+                "--num-heads",
+                "2",
+                "--num-layers",
+                "1",
+                "--vocab-size",
+                "20",
+                "--num-epochs",
+                "1",
+                "--batch-size",
+                "2",
+                "--seq-len",
+                "8",
+                "--num-samples",
+                "10",
+                "--attention-type",
+                "fused",
+                "--seed",
+                "42",
+            ],
+        )
         train_main()
 
     def test_train_with_fused_v2(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(sys, "argv", [
-            "train",
-            "--d-model", "32",
-            "--num-heads", "2",
-            "--num-layers", "1",
-            "--vocab-size", "20",
-            "--num-epochs", "1",
-            "--batch-size", "2",
-            "--seq-len", "8",
-            "--num-samples", "10",
-            "--attention-type", "fused_v2",
-            "--seed", "42",
-        ])
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "train",
+                "--d-model",
+                "32",
+                "--num-heads",
+                "2",
+                "--num-layers",
+                "1",
+                "--vocab-size",
+                "20",
+                "--num-epochs",
+                "1",
+                "--batch-size",
+                "2",
+                "--seq-len",
+                "8",
+                "--num-samples",
+                "10",
+                "--attention-type",
+                "fused_v2",
+                "--seed",
+                "42",
+            ],
+        )
         train_main()
 
 
@@ -107,13 +177,21 @@ class TestCLIBenchmark:
             output_path = f.name
 
         try:
-            monkeypatch.setattr(sys, "argv", [
-                "benchmark",
-                "--d-model", "64",
-                "--num-heads", "2",
-                "--num-runs", "2",
-                "--output", output_path,
-            ])
+            monkeypatch.setattr(
+                sys,
+                "argv",
+                [
+                    "benchmark",
+                    "--d-model",
+                    "64",
+                    "--num-heads",
+                    "2",
+                    "--num-runs",
+                    "2",
+                    "--output",
+                    output_path,
+                ],
+            )
             benchmark_main()
 
             with open(output_path) as f:

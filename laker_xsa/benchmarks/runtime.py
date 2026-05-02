@@ -138,7 +138,9 @@ def profile_iterations(
         kernel_diag = torch.diagonal(kernel, dim1=-2, dim2=-1)
         diag_precond, lr_precond = attn.preconditioner(kernel_diag, seq_len)
 
-        lambda_reg = torch.nn.functional.softplus(attn.lambda_reg) + config.eps  # pylint: disable=not-callable
+        lambda_reg = (
+            torch.nn.functional.softplus(attn.lambda_reg) + config.eps
+        )  # pylint: disable=not-callable
 
         kernel_reg = kernel.clone()
         eye = torch.eye(seq_len, device=device, dtype=kernel.dtype)

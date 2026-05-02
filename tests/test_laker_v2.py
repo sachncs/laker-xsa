@@ -24,6 +24,7 @@ def config() -> XSA_LAKER_Config:
 # AttentionKernel
 # ---------------------------------------------------------------------------
 
+
 class TestAttentionKernel:
     """Tests for AttentionKernel module."""
 
@@ -95,6 +96,7 @@ class TestAttentionKernel:
 # ---------------------------------------------------------------------------
 # LakerAttention (v2)
 # ---------------------------------------------------------------------------
+
 
 class TestLakerAttention:
     """Tests for LakerAttention v2."""
@@ -185,7 +187,9 @@ class TestLakerAttention:
     def test_configs_with_preconditioner_types(self) -> None:
         for mode in ["fast", "diagonal", "none"]:
             cfg = XSA_LAKER_Config(
-                d_model=64, num_heads=4, preconditioner_type=mode,
+                d_model=64,
+                num_heads=4,
+                preconditioner_type=mode,
             )
             attn = LakerAttention(cfg)
             attn.eval()
@@ -195,7 +199,9 @@ class TestLakerAttention:
 
     def test_zero_diagonal_xsa_mode(self) -> None:
         cfg = XSA_LAKER_Config(
-            d_model=64, num_heads=4, xsa_mode="zero_diagonal",
+            d_model=64,
+            num_heads=4,
+            xsa_mode="zero_diagonal",
         )
         attn = LakerAttention(cfg)
         attn.eval()
@@ -208,6 +214,7 @@ class TestLakerAttention:
 # ---------------------------------------------------------------------------
 # LakerAttentionLayer
 # ---------------------------------------------------------------------------
+
 
 class TestLakerAttentionLayer:
     """Tests for LakerAttentionLayer."""
@@ -226,7 +233,9 @@ class TestLakerAttentionLayer:
 
     def test_share_preconditioner_flag(self, config: XSA_LAKER_Config) -> None:
         layer = LakerAttentionLayer(
-            config, layer_idx=0, share_preconditioner_across_layers=True,
+            config,
+            layer_idx=0,
+            share_preconditioner_across_layers=True,
         )
         assert layer.share_preconditioner is True
 
@@ -244,6 +253,7 @@ class TestLakerAttentionLayer:
 # LakerPreconditioner
 # ---------------------------------------------------------------------------
 
+
 class TestLakerPreconditioner:
     """Tests for LakerPreconditioner v2."""
 
@@ -253,7 +263,10 @@ class TestLakerPreconditioner:
         A = torch.randn(2, 4, n, n)
         # Build PSD kernel: A @ A^T ensures SPD-like structure
         kernel = torch.matmul(A, A.transpose(-2, -1))
-        kernel = kernel / kernel.max(dim=-1, keepdim=True).values.max(dim=-2, keepdim=True).values
+        kernel = (
+            kernel
+            / kernel.max(dim=-1, keepdim=True).values.max(dim=-2, keepdim=True).values
+        )
         return kernel
 
     def test_fast_mode_output(self, sample_kernel: torch.Tensor) -> None:
@@ -338,6 +351,7 @@ class TestLakerPreconditioner:
 # ---------------------------------------------------------------------------
 # compute_kernel_matrix functional
 # ---------------------------------------------------------------------------
+
 
 class TestFunctionalKernel:
     """Tests for stateless compute_kernel_matrix."""

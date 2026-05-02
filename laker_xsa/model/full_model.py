@@ -54,7 +54,9 @@ class XSALAKERTransformer(nn.Module):
         dropout: float = 0.0,
         vocab_size: Optional[int] = None,
         max_seq_len: int = 512,
-        attention_type: Literal["standard", "xsa", "kernel", "fused", "fused_v2"] = "fused_v2",
+        attention_type: Literal[
+            "standard", "xsa", "kernel", "fused", "fused_v2"
+        ] = "fused_v2",
     ) -> None:
         """
         Initialize Transformer model.
@@ -128,9 +130,13 @@ class XSALAKERTransformer(nn.Module):
                     f"Expected 2D token IDs (batch, seq_len), got shape {x.shape}"
                 )
             batch, seq_len = x.shape
-            positions = torch.arange(seq_len, device=x.device).unsqueeze(0).expand(
-                batch, -1
+            positions = (
+                torch.arange(seq_len, device=x.device).unsqueeze(0).expand(batch, -1)
             )
+            if self.pos_embedding is None:
+                raise RuntimeError(
+                    "pos_embedding must be set when token_embedding is used"
+                )
             x = self.token_embedding(x) + self.pos_embedding(positions)
 
         # Apply Transformer blocks
@@ -145,3 +151,7 @@ class XSALAKERTransformer(nn.Module):
             x = self.output_proj(x)
 
         return x
+
+    token_embedding: Optional[nn.Embedding]
+    pos_embedding: Optional[nn.Embedding]
+    output_proj: Optional[nn.Linear]

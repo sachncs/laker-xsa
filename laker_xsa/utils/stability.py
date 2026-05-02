@@ -90,9 +90,10 @@ def clamp_tensor(
 
     if min_val is not None and max_val is not None:
         if min_val > max_val:
-            raise ValueError(
-                f"clamp_tensor: min_val ({min_val}) > max_val ({max_val})"
-            )
+            raise ValueError(f"clamp_tensor: min_val ({min_val}) > max_val ({max_val})")
 
-    return torch.clamp(x, min_val if min_val is not None else float("-inf"),
-                       max_val if max_val is not None else float("inf"))
+    return torch.clamp(
+        x,
+        min_val if min_val is not None else float("-inf"),
+        max_val if max_val is not None else float("inf"),
+    )

@@ -102,7 +102,9 @@ def main() -> None:
     )
     results["benchmarks"]["conditioning"] = cond_results
     print(f"  Raw condition number: {cond_results['raw_condition_mean']:.2f}")
-    print(f"  Regularized condition number: {cond_results['regularized_condition_mean']:.2f}")
+    print(
+        f"  Regularized condition number: {cond_results['regularized_condition_mean']:.2f}"
+    )
     print("  Complete!")
 
     # Runtime benchmark

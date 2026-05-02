@@ -76,7 +76,8 @@ def main() -> None:
     print("\nRunning inference on random input...")
     with torch.no_grad():
         x = torch.randint(
-            0, checkpoint.get("vocab_size", 1000),
+            0,
+            checkpoint.get("vocab_size", 1000),
             (args.batch_size, args.seq_len),
             device=device,
         )

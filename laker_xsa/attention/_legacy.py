@@ -16,14 +16,13 @@ Key issues with v1 (fixed in v2 / laker.py):
 from __future__ import annotations
 
 import warnings
-from typing import Literal, Optional, Tuple
+from typing import Literal, Optional, Tuple, cast
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from laker_xsa.config import XSA_LAKER_Config
-
 
 _DEPRECATION_MSG = (
     "{} is deprecated. Use LakerAttention from laker_xsa.attention.laker "
@@ -69,7 +68,8 @@ class KernelFunction(nn.Module):
         q_norm_sq = (q * q).sum(dim=-1, keepdim=True)
         k_norm_sq = (k * k).sum(dim=-1, keepdim=True)
         dist_sq = (
-            q_norm_sq + k_norm_sq.transpose(-2, -1)
+            q_norm_sq
+            + k_norm_sq.transpose(-2, -1)
             - 2 * torch.matmul(q, k.transpose(-2, -1))
         )
         dist_sq = torch.clamp(dist_sq, min=0.0)
@@ -127,12 +127,8 @@ class LearnedPreconditioner(nn.Module):
         lr_precond: Optional[torch.Tensor] = None
         if self.rank is not None and self.rank > 0 and self.pos_embedding.numel() > 0:
             pos_emb = self.pos_embedding[:seq_len]
-            lr_precond_base = torch.matmul(
-                pos_emb.unsqueeze(0), self.head_proj
-            )
-            lr_precond = lr_precond_base.unsqueeze(0).expand(
-                batch, -1, -1, -1
-            )
+            lr_precond_base = torch.matmul(pos_emb.unsqueeze(0), self.head_proj)
+            lr_precond = lr_precond_base.unsqueeze(0).expand(batch, -1, -1, -1)
 
         return diag_precond, lr_precond
 
@@ -247,7 +243,7 @@ class KernelAttentionRegression(nn.Module):
 
         out = torch.matmul(kernel, alpha)
         out = out.transpose(1, 2).contiguous().view(batch, seq_len, self.d_model)
-        return self.w_o(out)
+        return cast(torch.Tensor, self.w_o(out))
 
 
 class FusedXSALAKERAttention(nn.Module):
@@ -286,9 +282,7 @@ class FusedXSALAKERAttention(nn.Module):
 
     def apply_xsa_to_kernel(self, kernel: torch.Tensor) -> torch.Tensor:
         _, _, seq_len, _ = kernel.shape
-        diag_mask = torch.eye(
-            seq_len, device=kernel.device, dtype=kernel.dtype
-        )
+        diag_mask = torch.eye(seq_len, device=kernel.device, dtype=kernel.dtype)
         diag_mask = diag_mask.view(1, 1, seq_len, seq_len)
         return kernel * (1.0 - diag_mask)
 
@@ -328,9 +322,21 @@ class FusedXSALAKERAttention(nn.Module):
     ) -> torch.Tensor:
         batch, seq_len, _ = x.shape
 
-        q = self.w_q(x).view(batch, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
-        k = self.w_k(x).view(batch, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
-        v = self.w_v(x).view(batch, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
+        q = (
+            self.w_q(x)
+            .view(batch, seq_len, self.num_heads, self.head_dim)
+            .transpose(1, 2)
+        )
+        k = (
+            self.w_k(x)
+            .view(batch, seq_len, self.num_heads, self.head_dim)
+            .transpose(1, 2)
+        )
+        v = (
+            self.w_v(x)
+            .view(batch, seq_len, self.num_heads, self.head_dim)
+            .transpose(1, 2)
+        )
 
         kernel = self.kernel_fn(q, k)
         kernel = self.apply_xsa_to_kernel(kernel)
@@ -353,7 +359,7 @@ class FusedXSALAKERAttention(nn.Module):
             out = out - self.xsa_scale * coef * v
 
         out = out.transpose(1, 2).contiguous().view(batch, seq_len, self.d_model)
-        return self.w_o(out)
+        return cast(torch.Tensor, self.w_o(out))
 
 
 def estimate_min_eigval(kernel: torch.Tensor) -> float:

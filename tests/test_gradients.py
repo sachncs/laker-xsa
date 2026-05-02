@@ -81,7 +81,9 @@ class TestAttentionGradients:
 
         for name, param in attn.named_parameters():
             assert param.grad is not None, f"Parameter {name} has no gradient"
-            assert torch.isfinite(param.grad).all(), f"Parameter {name} has non-finite gradient"
+            assert torch.isfinite(
+                param.grad
+            ).all(), f"Parameter {name} has non-finite gradient"
 
     def test_laker_attention_gradients(self, config: XSA_LAKER_Config) -> None:
         """Test LakerAttention (v2) gradients."""

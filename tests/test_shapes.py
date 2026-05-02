@@ -26,9 +26,7 @@ class TestAttentionShapes:
 
     @pytest.mark.parametrize("batch_size", [1, 2, 4, 8])
     @pytest.mark.parametrize("seq_len", [16, 32, 64, 128])
-    def test_standard_attention_shapes(
-        self, batch_size: int, seq_len: int
-    ) -> None:
+    def test_standard_attention_shapes(self, batch_size: int, seq_len: int) -> None:
         """Test standard attention output shapes."""
         config = XSA_LAKER_Config(d_model=128, num_heads=4)
         attn = StandardMultiHeadAttention(config)
@@ -68,9 +66,7 @@ class TestBlockShapes:
 
     @pytest.mark.parametrize("batch_size", [1, 2, 4])
     @pytest.mark.parametrize("seq_len", [16, 32, 64])
-    def test_transformer_block_shapes(
-        self, batch_size: int, seq_len: int
-    ) -> None:
+    def test_transformer_block_shapes(self, batch_size: int, seq_len: int) -> None:
         """Test Transformer block output shapes."""
         config = XSA_LAKER_Config(d_model=128, num_heads=4)
         block = XSALAKERTransformerBlock(config, d_ff=512)
@@ -86,9 +82,7 @@ class TestModelShapes:
 
     @pytest.mark.parametrize("batch_size", [1, 2, 4])
     @pytest.mark.parametrize("seq_len", [16, 32, 64])
-    def test_model_with_vocab_shapes(
-        self, batch_size: int, seq_len: int
-    ) -> None:
+    def test_model_with_vocab_shapes(self, batch_size: int, seq_len: int) -> None:
         """Test model with vocabulary output shapes."""
         config = XSA_LAKER_Config(d_model=128, num_heads=4)
         model = XSALAKERTransformer(
@@ -105,9 +99,7 @@ class TestModelShapes:
 
     @pytest.mark.parametrize("batch_size", [1, 2, 4])
     @pytest.mark.parametrize("seq_len", [16, 32, 64])
-    def test_model_embedding_shapes(
-        self, batch_size: int, seq_len: int
-    ) -> None:
+    def test_model_embedding_shapes(self, batch_size: int, seq_len: int) -> None:
         """Test model without vocabulary (embedding output)."""
         config = XSA_LAKER_Config(d_model=128, num_heads=4)
         model = XSALAKERTransformer(

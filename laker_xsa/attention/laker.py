@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import logging
 import math
-from typing import Optional
+from typing import Optional, cast
 
 import torch
 from torch import nn
@@ -96,7 +96,9 @@ class LakerAttention(BaseMultiHeadAttention):
     @property
     def lambda_reg(self) -> torch.Tensor:
         """Return SPD-guaranteed regularization (softplus parameterized)."""
-        return F.softplus(self.raw_lambda) + self.config.eps  # pylint: disable=not-callable
+        return (
+            F.softplus(self.raw_lambda) + self.config.eps
+        )  # pylint: disable=not-callable
 
     def zero_diagonal(self, kernel: torch.Tensor) -> torch.Tensor:
         """Zero the kernel diagonal: K_{ii} = 0 for all i (XSA)."""
@@ -115,9 +117,7 @@ class LakerAttention(BaseMultiHeadAttention):
 
     def rms_normalize(self, x: torch.Tensor) -> torch.Tensor:
         """Root-mean-square normalization for multi-layer stability."""
-        rms = torch.sqrt(
-            (x * x).mean(dim=(-2, -1), keepdim=True) + self.config.eps
-        )
+        rms = torch.sqrt((x * x).mean(dim=(-2, -1), keepdim=True) + self.config.eps)
         return x / rms
 
     def compute_attention(
@@ -188,7 +188,7 @@ class LakerAttention(BaseMultiHeadAttention):
         if self.config.xsa_mode == "subtract_projection":
             alpha = self.clean_self_projection(alpha, v)
 
-        return alpha
+        return cast(torch.Tensor, alpha)
 
 
 class LakerAttentionLayer(nn.Module):
@@ -217,4 +217,6 @@ class LakerAttentionLayer(nn.Module):
         mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """Forward pass through LakerAttentionLayer."""
-        return self.attention(x, mask)
+        return cast(torch.Tensor, self.attention(x, mask))
+
+    attention: LakerAttention

@@ -96,8 +96,11 @@ def compute_conditioning_metrics(
 
     for _ in range(num_samples):
         # Random Q, K
-        q = torch.randn(1, config.num_heads, seq_len, config.head_dim, device=device)
-        k = torch.randn(1, config.num_heads, seq_len, config.head_dim, device=device)
+        if config.head_dim is None:
+            raise ValueError("config.head_dim must be set for conditioning metrics")
+        head_dim = int(config.head_dim)
+        q = torch.randn(1, config.num_heads, seq_len, head_dim, device=device)
+        k = torch.randn(1, config.num_heads, seq_len, head_dim, device=device)
 
         # Compute kernel
         kernel = kernel_fn(q, k)
@@ -126,9 +129,11 @@ def compute_conditioning_metrics(
     return {
         "raw_condition_mean": sum(raw_conditions) / len(raw_conditions),
         "raw_condition_std": torch.tensor(raw_conditions).std().item(),
-        "regularized_condition_mean": sum(regularized_conditions) / len(regularized_conditions),
+        "regularized_condition_mean": sum(regularized_conditions)
+        / len(regularized_conditions),
         "regularized_condition_std": torch.tensor(regularized_conditions).std().item(),
-        "preconditioned_residual_norm": sum(preconditioned_residuals) / len(preconditioned_residuals),
+        "preconditioned_residual_norm": sum(preconditioned_residuals)
+        / len(preconditioned_residuals),
         "config": {
             "kernel_type": config.kernel_type,
             "seq_len": seq_len,

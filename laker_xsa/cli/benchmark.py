@@ -131,7 +131,9 @@ def run_benchmarks(
 
     for seq_len in seq_lens:
         print(f"\nBenchmarking seq_len={seq_len}...")
-        x = torch.randn(4, seq_len, d_model, device="cuda" if torch.cuda.is_available() else "cpu")
+        x = torch.randn(
+            4, seq_len, d_model, device="cuda" if torch.cuda.is_available() else "cpu"
+        )
 
         results["results"][seq_len] = {}
 
@@ -139,8 +141,12 @@ def run_benchmarks(
         attn_std = StandardMultiHeadAttention(config)
         if torch.cuda.is_available():
             attn_std = attn_std.cuda()
-        results["results"][seq_len]["standard"] = benchmark_attention(attn_std, x, num_runs)
-        print(f"  Standard: {results['results'][seq_len]['standard']['forward_ms']:.2f}ms")
+        results["results"][seq_len]["standard"] = benchmark_attention(
+            attn_std, x, num_runs
+        )
+        print(
+            f"  Standard: {results['results'][seq_len]['standard']['forward_ms']:.2f}ms"
+        )
 
         # XSA
         attn_xsa = ExclusiveSelfAttention(config)
@@ -153,14 +159,18 @@ def run_benchmarks(
         attn_kernel = KernelAttentionRegression(config)
         if torch.cuda.is_available():
             attn_kernel = attn_kernel.cuda()
-        results["results"][seq_len]["kernel"] = benchmark_attention(attn_kernel, x, num_runs)
+        results["results"][seq_len]["kernel"] = benchmark_attention(
+            attn_kernel, x, num_runs
+        )
         print(f"  Kernel: {results['results'][seq_len]['kernel']['forward_ms']:.2f}ms")
 
         # Fused XSA + LAKER
         attn_fused = FusedXSALAKERAttention(config)
         if torch.cuda.is_available():
             attn_fused = attn_fused.cuda()
-        results["results"][seq_len]["fused"] = benchmark_attention(attn_fused, x, num_runs)
+        results["results"][seq_len]["fused"] = benchmark_attention(
+            attn_fused, x, num_runs
+        )
         print(f"  Fused: {results['results'][seq_len]['fused']['forward_ms']:.2f}ms")
 
     return results
@@ -229,8 +239,10 @@ def main() -> None:
         print(f"\nSequence length: {seq_len}")
         print("-" * 40)
         for attn_type, metrics in data.items():
-            print(f"  {attn_type:10s}: {metrics['forward_ms']:7.2f}ms forward, "
-                  f"{metrics['backward_ms']:7.2f}ms backward")
+            print(
+                f"  {attn_type:10s}: {metrics['forward_ms']:7.2f}ms forward, "
+                f"{metrics['backward_ms']:7.2f}ms backward"
+            )
 
 
 if __name__ == "__main__":

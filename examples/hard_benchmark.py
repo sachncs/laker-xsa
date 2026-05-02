@@ -28,7 +28,6 @@ from torch.utils.data import DataLoader, TensorDataset
 from laker_xsa.config import XSA_LAKER_Config
 from laker_xsa.model.full_model import XSALAKERTransformer
 
-
 # =============================================================================
 # Hard Task Definitions
 # =============================================================================
@@ -262,7 +261,9 @@ def train_model(
 ) -> Dict[str, List[float]]:
     """Train model and return training history."""
     model = model.to(device)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.01)
+    optimizer = torch.optim.AdamW(
+        model.parameters(), lr=learning_rate, weight_decay=0.01
+    )
     criterion = nn.CrossEntropyLoss()
 
     train_losses = []
@@ -350,8 +351,11 @@ def evaluate_model(
 
             # Query-only accuracy (only evaluate at query positions if provided)
             if query_positions is not None:
-                batch_query_positions = query_positions[batch_idx * test_loader.batch_size:
-                                                        (batch_idx + 1) * test_loader.batch_size]
+                batch_query_positions = query_positions[
+                    batch_idx
+                    * test_loader.batch_size : (batch_idx + 1)
+                    * test_loader.batch_size
+                ]
                 for b in range(input_ids.size(0)):
                     for qpos in batch_query_positions[b]:
                         if qpos >= 0:
@@ -379,7 +383,7 @@ def measure_conditioning(
 
     with torch.no_grad():
         block = model.blocks[0]
-        if hasattr(block.attention, 'kernel_fn'):
+        if hasattr(block.attention, "kernel_fn"):
             q = block.attention.w_q(x)
             k = block.attention.w_k(x)
             q = q.view(1, seq_len, config.num_heads, config.head_dim).transpose(1, 2)
@@ -522,7 +526,9 @@ def run_benchmark(
             device=device,
         )
 
-        test_loss, test_accuracy, query_accuracy = evaluate_model(model, test_loader, device)
+        test_loss, test_accuracy, query_accuracy = evaluate_model(
+            model, test_loader, device
+        )
 
         conditioning = measure_conditioning(model, seq_len, device)
         speed_metrics = measure_inference_speed(model, seq_len, device)
@@ -544,23 +550,37 @@ def run_benchmark(
         print(f"  Test Loss: {test_loss:.4f}")
         print(f"  Test Accuracy: {test_accuracy:.4f}")
         print(f"  Query Accuracy: {query_accuracy:.4f}")
-        print(f"  Condition Estimate: {conditioning.get('condition_estimate', 'N/A'):.4f}")
-        print(f"  Inference Speed: {speed_metrics['samples_per_second']:.1f} samples/sec")
+        print(
+            f"  Condition Estimate: {conditioning.get('condition_estimate', 'N/A'):.4f}"
+        )
+        print(
+            f"  Inference Speed: {speed_metrics['samples_per_second']:.1f} samples/sec"
+        )
 
     # Compute comparison metrics
-    if "standard" in results["attention_types"] and "fused" in results["attention_types"]:
+    if (
+        "standard" in results["attention_types"]
+        and "fused" in results["attention_types"]
+    ):
         std_acc = results["attention_types"]["standard"]["query_accuracy"]
         fused_acc = results["attention_types"]["fused"]["query_accuracy"]
 
         std_loss = results["attention_types"]["standard"]["test_loss"]
         fused_loss = results["attention_types"]["fused"]["test_loss"]
 
-        std_speed = results["attention_types"]["standard"]["speed_metrics"]["samples_per_second"]
-        fused_speed = results["attention_types"]["fused"]["speed_metrics"]["samples_per_second"]
+        std_speed = results["attention_types"]["standard"]["speed_metrics"][
+            "samples_per_second"
+        ]
+        fused_speed = results["attention_types"]["fused"]["speed_metrics"][
+            "samples_per_second"
+        ]
 
         results["comparison"] = {
             "query_accuracy_improvement": fused_acc - std_acc,
-            "query_accuracy_improvement_pct": ((fused_acc - std_acc) / max(std_acc, 0.01)) * 100,
+            "query_accuracy_improvement_pct": (
+                (fused_acc - std_acc) / max(std_acc, 0.01)
+            )
+            * 100,
             "loss_reduction": std_loss - fused_loss,
             "loss_reduction_pct": ((std_loss - fused_loss) / max(std_loss, 0.01)) * 100,
             "speed_slowdown": std_speed / max(fused_speed, 0.01),
@@ -569,10 +589,14 @@ def run_benchmark(
         print(f"\n{'=' * 60}")
         print("COMPARISON SUMMARY")
         print("=" * 60)
-        print(f"Query Accuracy Improvement: {results['comparison']['query_accuracy_improvement']:.4f} "
-              f"({results['comparison']['query_accuracy_improvement_pct']:.1f}%)")
-        print(f"Loss Reduction: {results['comparison']['loss_reduction']:.4f} "
-              f"({results['comparison']['loss_reduction_pct']:.1f}%)")
+        print(
+            f"Query Accuracy Improvement: {results['comparison']['query_accuracy_improvement']:.4f} "
+            f"({results['comparison']['query_accuracy_improvement_pct']:.1f}%)"
+        )
+        print(
+            f"Loss Reduction: {results['comparison']['loss_reduction']:.4f} "
+            f"({results['comparison']['loss_reduction_pct']:.1f}%)"
+        )
         print(f"Speed Slowdown: {results['comparison']['speed_slowdown']:.2f}x")
 
     return results
@@ -646,7 +670,9 @@ def main() -> None:
     print("=" * 60)
     print(f"Task: {args.task}")
     print(f"Sequence Length: {args.seq_len}")
-    print(f"Model: d_model={args.d_model}, heads={args.num_heads}, layers={args.num_layers}")
+    print(
+        f"Model: d_model={args.d_model}, heads={args.num_heads}, layers={args.num_layers}"
+    )
     print(f"Training: {args.epochs} epochs, lr={args.lr}")
 
     results = run_benchmark(

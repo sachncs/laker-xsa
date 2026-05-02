@@ -29,7 +29,9 @@ from laker_xsa.model.full_model import XSALAKERTransformer
 
 
 def create_copy_task(
-    num_samples: int, seq_len: int, vocab_size: int,
+    num_samples: int,
+    seq_len: int,
+    vocab_size: int,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """Copy task: output equals input."""
     input_ids = torch.randint(0, vocab_size, (num_samples, seq_len))
@@ -38,7 +40,9 @@ def create_copy_task(
 
 
 def create_reversal_task(
-    num_samples: int, seq_len: int, vocab_size: int,
+    num_samples: int,
+    seq_len: int,
+    vocab_size: int,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """Reversal task: output is reversed input."""
     input_ids = torch.randint(0, vocab_size, (num_samples, seq_len))
@@ -47,7 +51,9 @@ def create_reversal_task(
 
 
 def create_retrieval_task(
-    num_samples: int, seq_len: int, vocab_size: int,
+    num_samples: int,
+    seq_len: int,
+    vocab_size: int,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Long-context retrieval with distractors.
@@ -82,7 +88,9 @@ def create_retrieval_task(
 
 
 def create_first_last_match_task(
-    num_samples: int, seq_len: int, vocab_size: int,
+    num_samples: int,
+    seq_len: int,
+    vocab_size: int,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     First-last matching task.
@@ -108,8 +116,12 @@ def create_first_last_match_task(
 
 
 def create_model(
-    d_model: int, num_heads: int, num_layers: int,
-    vocab_size: int, max_seq_len: int, attention_type: str,
+    d_model: int,
+    num_heads: int,
+    num_layers: int,
+    vocab_size: int,
+    max_seq_len: int,
+    attention_type: str,
     dropout: float = 0.1,
 ) -> XSALAKERTransformer:
     """Create Transformer model."""
@@ -136,13 +148,19 @@ def create_model(
 
 
 def train_model(
-    model: nn.Module, train_loader: DataLoader, val_loader: DataLoader,
-    num_epochs: int, learning_rate: float, device: torch.device,
+    model: nn.Module,
+    train_loader: DataLoader,
+    val_loader: DataLoader,
+    num_epochs: int,
+    learning_rate: float,
+    device: torch.device,
 ) -> Dict[str, List[float]]:
     """Train model and return history."""
     model = model.to(device)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.01)
-    criterion = nn.CrossEntropyLoss(reduction='none')
+    optimizer = torch.optim.AdamW(
+        model.parameters(), lr=learning_rate, weight_decay=0.01
+    )
+    criterion = nn.CrossEntropyLoss(reduction="none")
 
     train_losses = []
     val_losses = []
@@ -195,14 +213,16 @@ def train_model(
 
 
 def evaluate_model(
-    model: nn.Module, test_loader: DataLoader, device: torch.device,
+    model: nn.Module,
+    test_loader: DataLoader,
+    device: torch.device,
 ) -> Tuple[float, float]:
     """Evaluate model on test set."""
     model.eval()
     total_loss = 0.0
     correct = 0
     total = 0
-    criterion = nn.CrossEntropyLoss(reduction='none')
+    criterion = nn.CrossEntropyLoss(reduction="none")
 
     with torch.no_grad():
         for batch in test_loader:
@@ -223,7 +243,10 @@ def evaluate_model(
 
 
 def measure_inference_speed(
-    model: XSALAKERTransformer, seq_len: int, device: torch.device, num_runs: int = 20,
+    model: XSALAKERTransformer,
+    seq_len: int,
+    device: torch.device,
+    num_runs: int = 20,
 ) -> Dict[str, float]:
     """Measure inference speed."""
     model.eval()
@@ -250,7 +273,9 @@ def measure_inference_speed(
 
 
 def measure_memory(
-    model: nn.Module, seq_len: int, device: torch.device,
+    model: nn.Module,
+    seq_len: int,
+    device: torch.device,
 ) -> Dict[str, float]:
     """Estimate memory usage during forward pass."""
     model.eval()
@@ -342,16 +367,23 @@ def run_scaling_benchmark(
             print(f"\nTraining {attention_type} attention...")
 
             model = create_model(
-                d_model=d_model, num_heads=num_heads, num_layers=num_layers,
-                vocab_size=vocab_size, max_seq_len=seq_len,
+                d_model=d_model,
+                num_heads=num_heads,
+                num_layers=num_layers,
+                vocab_size=vocab_size,
+                max_seq_len=seq_len,
                 attention_type=attention_type,
             )
 
             total_params = sum(p.numel() for p in model.parameters())
 
             history = train_model(
-                model=model, train_loader=train_loader, val_loader=val_loader,
-                num_epochs=num_epochs, learning_rate=learning_rate, device=device,
+                model=model,
+                train_loader=train_loader,
+                val_loader=val_loader,
+                num_epochs=num_epochs,
+                learning_rate=learning_rate,
+                device=device,
             )
 
             test_loss, test_accuracy = evaluate_model(model, test_loader, device)
@@ -367,14 +399,20 @@ def run_scaling_benchmark(
                 "total_params": total_params,
             }
 
-            print(f"  {attention_type.upper()}: Loss={test_loss:.4f}, "
-                  f"Acc={test_accuracy:.4f}, Speed={speed['samples_per_second']:.1f}/s")
+            print(
+                f"  {attention_type.upper()}: Loss={test_loss:.4f}, "
+                f"Acc={test_accuracy:.4f}, Speed={speed['samples_per_second']:.1f}/s"
+            )
 
         # Compute comparison
         std_acc = seq_results["attention_types"]["standard"]["test_accuracy"]
         fused_acc = seq_results["attention_types"]["fused"]["test_accuracy"]
-        std_speed = seq_results["attention_types"]["standard"]["speed_metrics"]["samples_per_second"]
-        fused_speed = seq_results["attention_types"]["fused"]["speed_metrics"]["samples_per_second"]
+        std_speed = seq_results["attention_types"]["standard"]["speed_metrics"][
+            "samples_per_second"
+        ]
+        fused_speed = seq_results["attention_types"]["fused"]["speed_metrics"][
+            "samples_per_second"
+        ]
 
         seq_results["comparison"] = {
             "accuracy_difference": fused_acc - std_acc,
@@ -383,8 +421,10 @@ def run_scaling_benchmark(
 
         results["sequence_lengths"][seq_len] = seq_results
 
-        print(f"\n  Comparison @ {seq_len}: Acc diff={fused_acc - std_acc:+.4f}, "
-              f"Slowdown={std_speed/fused_speed:.2f}x")
+        print(
+            f"\n  Comparison @ {seq_len}: Acc diff={fused_acc - std_acc:+.4f}, "
+            f"Slowdown={std_speed/fused_speed:.2f}x"
+        )
 
     return results
 
@@ -392,10 +432,15 @@ def run_scaling_benchmark(
 def main() -> None:
     """Main entry point."""
     parser = argparse.ArgumentParser(description="Long sequence scaling benchmark")
-    parser.add_argument("--task", type=str, default="retrieval",
-                        choices=["copy", "reversal", "retrieval", "first_last"])
-    parser.add_argument("--max-seq-len", type=int, default=512,
-                        help="Maximum sequence length to test")
+    parser.add_argument(
+        "--task",
+        type=str,
+        default="retrieval",
+        choices=["copy", "reversal", "retrieval", "first_last"],
+    )
+    parser.add_argument(
+        "--max-seq-len", type=int, default=512, help="Maximum sequence length to test"
+    )
     parser.add_argument("--d-model", type=int, default=128)
     parser.add_argument("--num-heads", type=int, default=4)
     parser.add_argument("--num-layers", type=int, default=4)
@@ -411,7 +456,9 @@ def main() -> None:
     print("=" * 60)
     print(f"Task: {args.task}")
     print(f"Max sequence length: {args.max_seq_len}")
-    print(f"Model: d_model={args.d_model}, heads={args.num_heads}, layers={args.num_layers}")
+    print(
+        f"Model: d_model={args.d_model}, heads={args.num_heads}, layers={args.num_layers}"
+    )
 
     results = run_scaling_benchmark(
         task_name=args.task,

@@ -25,9 +25,7 @@ logger = logging.getLogger(__name__)
 TENSOR_CLIP_ABS = 1e6
 
 
-def reshape_to_heads(
-    x: torch.Tensor, num_heads: int, head_dim: int
-) -> torch.Tensor:
+def reshape_to_heads(x: torch.Tensor, num_heads: int, head_dim: int) -> torch.Tensor:
     """Reshape from (batch, seq_len, d_model) to (batch, num_heads, seq_len, head_dim)."""
     batch, seq_len, _ = x.shape
     return x.view(batch, seq_len, num_heads, head_dim).transpose(1, 2)
@@ -39,9 +37,7 @@ def reshape_from_heads(x: torch.Tensor) -> torch.Tensor:
     return x.transpose(1, 2).contiguous().view(batch, seq_len, -1)
 
 
-def broadcast_mask(
-    mask: torch.Tensor, target: torch.Tensor
-) -> torch.Tensor:
+def broadcast_mask(mask: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
     """Ensure mask has compatible shape with attention scores.
 
     Expands a (batch, seq_len, seq_len) mask to (batch, 1, seq_len, seq_len)
@@ -93,7 +89,9 @@ class QKVProjection(nn.Module):
         self.w_k = nn.Linear(d_model, d_model, bias=False)
         self.w_v = nn.Linear(d_model, d_model, bias=False)
 
-    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def forward(
+        self, x: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Project input to Q, K, V tensors."""
         return self.w_q(x), self.w_k(x), self.w_v(x)
 
@@ -126,9 +124,7 @@ class BaseMultiHeadAttention(nn.Module, ABC):
                 f"Expected 3D input (batch, seq_len, d_model), got shape {x.shape}"
             )
         if x.shape[-1] != self.d_model:
-            raise ValueError(
-                f"Input dim {x.shape[-1]} != d_model {self.d_model}"
-            )
+            raise ValueError(f"Input dim {x.shape[-1]} != d_model {self.d_model}")
         if not torch.isfinite(x).all():
             logger.warning("Non-finite values detected in attention input; clamping.")
             x.clamp_(-TENSOR_CLIP_ABS, TENSOR_CLIP_ABS)
@@ -165,4 +161,4 @@ class BaseMultiHeadAttention(nn.Module, ABC):
 
         out = reshape_from_heads(out_heads)
 
-        return self.w_o(out)
+        return cast(torch.Tensor, self.w_o(out))
