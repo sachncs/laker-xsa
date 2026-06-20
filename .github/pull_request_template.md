@@ -14,20 +14,28 @@ Fixes #(issue number)
 - [ ] Documentation update
 - [ ] Code refactoring
 - [ ] Performance improvement
+- [ ] Test update
+
+## Changes
+
+Summarize the key changes made:
+
+-
+-
 
 ## Testing
 
 - [ ] I have added tests that prove my fix/feature works
-- [ ] All tests pass locally
-- [ ] I have updated the documentation accordingly
+- [ ] All existing tests pass locally (`pytest tests/ -v`)
+- [ ] I have added type hints to new functions
+- [ ] I have added docstrings to new functions
 
-## Checklist
+## Code Quality
 
-- [ ] My code follows the project's code style
-- [ ] I have added type hints to my functions
-- [ ] I have added docstrings to my functions
+- [ ] My code follows the project's code style (black, pylint)
+- [ ] I have run `pylint laker_xsa/ --rcfile=pyproject.toml` with no new warnings
+- [ ] I have run `mypy laker_xsa/ --ignore-missing-imports` with no new errors
 - [ ] I have updated the CHANGELOG.md if applicable
-- [ ] I have run pylint and mypy successfully
 
 ## Additional Notes
 

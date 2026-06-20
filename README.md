@@ -1,39 +1,31 @@
-# LAKER-XSA: Fused Exclusive Self Attention and LAKER Kernel Attention
+# LAKER-XSA
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![CI](https://github.com/sachn-cs/laker-xsa/actions/workflows/ci.yml/badge.svg)](https://github.com/sachn-cs/laker-xsa/actions/workflows/ci.yml)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch 2.0+](https://img.shields.io/badge/PyTorch-2.0+-ee4c2c?logo=pytorch)](https://pytorch.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![Checked with mypy](https://img.shields.io/badge/mypy-checked-blue)](https://mypy-lang.org/)
 
-Production-grade implementation of fused **Exclusive Self Attention (XSA)** and **LAKER-style Kernel Attention Regression** for Transformer models.
+Fused Exclusive Self Attention and LAKER Kernel Attention for Transformer models.
 
-## Papers
+Production-grade implementation of two complementary attention mechanisms that address fundamental failure modes of standard attention: **self-bias** (tokens copying themselves) and **spectral collapse** (eigenvalue decay).
 
-- **XSA**: [arXiv:2603.09078](https://arxiv.org/abs/2603.09078) - Exclusive Self Attention
-- **LAKER**: [arXiv:2604.25138v1](https://arxiv.org/html/2604.25138v1) - Learned Preconditioning for Attention Kernel Regression
+## Features
 
-## Overview
-
-LAKER-XSA fuses two attention mechanisms to improve Transformer models:
-
-1. **Exclusive Self Attention (XSA)**: Removes self-aligned components from attention output, forcing each token to aggregate only from OTHER tokens in the sequence.
-
-2. **LAKER Kernel Attention**: Treats attention as kernel ridge regression with a learned preconditioner (CCCP-based Tyler's M-estimator), solved via Preconditioned Conjugate Gradient (PCG).
-
-### Key Features
-
-- **Mathematically faithful**: Implements equations directly from papers
-- **Production-ready**: Full type hints, Google-style docstrings, CI-passing (pylint, mypy, pytest)
-- **Well-tested**: 269 tests, 88% coverage, zero deprecation warnings
-- **Benchmarked**: Scaling, conditioning, and runtime benchmarks included
-- **Dual API**: Class-based Modules for training, stateless `functional` API for inference
+- **Exclusive Self Attention (XSA)** — Removes self-aligned components, forcing context-only aggregation ([arXiv:2603.09078](https://arxiv.org/abs/2603.09078))
+- **LAKER Kernel Attention** — Kernel ridge regression with CCCP-based learned preconditioning ([arXiv:2604.25138](https://arxiv.org/html/2604.25138v1))
+- **Fused v2 (`LakerAttention`)** — Novel combination of XSA + LAKER in a single module
+- **Dual API** — Class-based modules for training, stateless functional API for inference
+- **CLI tools** — Train, benchmark, and evaluate from the command line
+- **Well-tested** — 269 tests, 88% coverage, zero deprecation warnings
+- **Type-safe** — Full type hints, passes mypy and pylint
 
 ## Installation
 
 ```bash
-git clone https://github.com/your-org/laker-xsa.git
+git clone https://github.com/sachn-cs/laker-xsa.git
 cd laker-xsa
-
-# Install with core dependencies
 pip install -e .
 
 # With development, benchmark, and training dependencies
@@ -47,30 +39,19 @@ import torch
 from laker_xsa import XSA_LAKER_Config, LakerAttention
 from laker_xsa.model.full_model import XSALAKERTransformer
 
-# Configuration
-config = XSA_LAKER_Config(
-    d_model=512,
-    num_heads=8,
-    dropout=0.1,
-    xsa_mode="subtract_projection",
-)
+config = XSA_LAKER_Config(d_model=512, num_heads=8, dropout=0.1)
 
-# Single attention layer (v2 — flagship)
+# Single attention layer
 attn = LakerAttention(config)
-x = torch.randn(2, 128, 512)  # (batch, seq_len, d_model)
+x = torch.randn(2, 128, 512)
 out = attn(x)  # (2, 128, 512)
 
 # Full Transformer model
 model = XSALAKERTransformer(
-    config,
-    num_layers=6,
-    vocab_size=32000,
-    max_seq_len=512,
-    attention_type="fused_v2",
+    config, num_layers=6, vocab_size=32000,
+    max_seq_len=512, attention_type="fused_v2",
 )
-
-input_ids = torch.randint(0, 32000, (2, 128))
-logits = model(input_ids)  # (2, 128, 32000)
+logits = model(torch.randint(0, 32000, (2, 128)))
 ```
 
 ## Usage
@@ -79,22 +60,15 @@ logits = model(input_ids)  # (2, 128, 32000)
 
 ```bash
 python -m laker_xsa.cli.train \
-    --d-model 256 \
-    --num-heads 4 \
-    --num-layers 4 \
-    --num-epochs 10 \
-    --batch-size 8 \
-    --attention-type fused_v2
+    --d-model 256 --num-heads 4 --num-layers 4 \
+    --num-epochs 10 --batch-size 8 --attention-type fused_v2
 ```
 
 ### CLI Benchmarking
 
 ```bash
 python -m laker_xsa.cli.benchmark \
-    --d-model 512 \
-    --num-heads 8 \
-    --num-runs 50 \
-    --output results.json
+    --d-model 512 --num-heads 8 --num-runs 50 --output results.json
 ```
 
 ### Evaluate Checkpoint
@@ -103,25 +77,50 @@ python -m laker_xsa.cli.benchmark \
 python -m laker_xsa.cli.evaluate --checkpoint path/to/checkpoint.pt
 ```
 
-## Repository Structure
+## Configuration
+
+LAKER-XSA uses a single configuration dataclass:
+
+```python
+from laker_xsa import XSA_LAKER_Config
+
+config = XSA_LAKER_Config(
+    d_model=512,                      # Embedding dimension
+    num_heads=8,                      # Number of attention heads
+    head_dim=None,                    # Per-head dim (default: d_model // num_heads)
+    dropout=0.0,                      # Dropout rate
+    eps=1e-6,                         # Numerical stability epsilon
+    lambda_init=3.0,                  # Regularization for kernel system
+    kernel_type="exp_attention",      # 'exp_attention', 'rbf', 'linear', 'cosine'
+    xsa_mode="subtract_projection",   # 'subtract_projection', 'zero_diagonal', 'mask'
+    preconditioner_type="fast",       # 'cccp', 'fast', 'diagonal', 'none'
+    preconditioner_rank=32,           # Low-rank dimension for fast preconditioner
+    pcg_max_iterations=20,            # Maximum PCG iterations
+    pcg_tolerance=1e-2,               # Relative residual tolerance
+    kernel_temperature=1.0,           # Temperature for exp kernel
+)
+```
+
+No environment variables are required. All configuration is passed through the `XSA_LAKER_Config` dataclass.
+
+## Project Structure
 
 ```
 laker-xsa/
 ├── laker_xsa/                # Main package
 │   ├── config.py             # Configuration dataclass
 │   ├── attention/            # Attention implementations
-│   │   ├── core.py           # Base class, QKV projection, reshape utils
-│   │   ├── standard.py       # Standard scaled dot-product attention
+│   │   ├── core.py           # Base class, QKV projection
+│   │   ├── standard.py       # Standard scaled dot-product
 │   │   ├── xsa.py            # Exclusive Self Attention
 │   │   ├── laker.py          # Fused XSA + LAKER (v2, flagship)
 │   │   ├── kernels.py        # AttentionKernel module
 │   │   ├── functional.py     # Stateless compute_kernel_matrix
-│   │   └── _legacy.py        # Deprecated v1 (KernelAttentionRegression, etc.)
+│   │   └── _legacy.py        # Deprecated v1 classes
 │   ├── solver/               # Iterative solvers
-│   │   ├── laker_preconditioner.py  # CCCP / fast / diagonal preconditioner
+│   │   ├── laker_preconditioner.py  # CCCP/fast/diagonal preconditioner
 │   │   ├── conjugate_gradient.py    # PCG + Richardson solvers
-│   │   ├── functional.py     # Stateless apply_kernel_operator
-│   │   └── preconditioner.py # Deprecated v1 preconditioner
+│   │   └── functional.py     # Stateless apply_kernel_operator
 │   ├── model/                # Transformer models
 │   │   ├── transformer_block.py
 │   │   └── full_model.py
@@ -134,44 +133,42 @@ laker-xsa/
 ├── tests/                    # 269 tests, 88% coverage
 ├── examples/                 # Example scripts
 ├── docs/                     # Architecture, math, design docs
-└── .github/workflows/        # CI (pylint, mypy, pytest)
+└── .github/workflows/        # CI pipeline
 ```
+
+## Development
+
+```bash
+# Setup development environment
+bash setup.sh
+
+# Or manually:
+python -m venv venv && source venv/bin/activate
+pip install -e ".[dev,bench,train]"
+```
+
+### Commands
+
+| Command | Description |
+|---------|-------------|
+| `pytest tests/ -v` | Run all tests |
+| `pytest tests/ --cov=laker_xsa` | Run tests with coverage |
+| `pylint laker_xsa/ --rcfile=pyproject.toml` | Lint |
+| `mypy laker_xsa/ --ignore-missing-imports` | Type check |
+| `black laker_xsa/ tests/` | Format code |
+| `python -m build` | Build distribution |
 
 ## API Reference
 
-### Configuration
-
-```python
-from laker_xsa import XSA_LAKER_Config
-
-config = XSA_LAKER_Config(
-    d_model=512,                # Embedding dimension
-    num_heads=8,                # Number of attention heads
-    head_dim=None,              # Per-head dim (default: d_model // num_heads)
-    dropout=0.0,                # Dropout rate
-    eps=1e-6,                   # Numerical stability epsilon
-    lambda_init=3.0,            # Initial regularization for kernel system
-    kernel_type="exp_attention",# 'exp_attention', 'rbf', 'linear', or 'cosine'
-    xsa_mode="subtract_projection",  # 'subtract_projection', 'zero_diagonal', 'mask'
-    preconditioner_type="fast", # 'cccp', 'fast', 'diagonal', 'none'
-    preconditioner_rank=32,     # Low-rank dimension for fast preconditioner
-    pcg_max_iterations=20,      # Maximum PCG iterations
-    pcg_tolerance=1e-2,         # Relative residual tolerance
-    kernel_temperature=1.0,     # Temperature for exp kernel
-)
-```
-
 ### Attention Modules
 
-| Module | Location | Description |
-|--------|----------|-------------|
-| `LakerAttention` | `laker_xsa.attention.laker` | **Flagship v2** — Fused XSA + LAKER with PCG |
-| `LakerAttentionLayer` | `laker_xsa.attention.laker` | Multi-layer wrapper with per-layer config |
-| `AttentionKernel` | `laker_xsa.attention.kernels` | Exp kernel K = exp(cosine(Q,K) / T) |
-| `StandardMultiHeadAttention` | `laker_xsa.attention.standard` | Baseline scaled dot-product attention |
-| `ExclusiveSelfAttention` | `laker_xsa.attention.xsa` | XSA-only with 3 exclusion strategies |
-| `FusedXSALAKERAttention` | `laker_xsa.attention._legacy` | **Deprecated v1** — use LakerAttention |
-| `KernelAttentionRegression` | `laker_xsa.attention._legacy` | **Deprecated v1** — use LakerAttention |
+| Module | Description |
+|--------|-------------|
+| `LakerAttention` | **Flagship v2** — Fused XSA + LAKER with PCG solver |
+| `LakerAttentionLayer` | Multi-layer wrapper with per-layer config |
+| `AttentionKernel` | Exp kernel K = exp(cosine(Q,K) / T) |
+| `StandardMultiHeadAttention` | Baseline scaled dot-product attention |
+| `ExclusiveSelfAttention` | XSA-only with 3 exclusion strategies |
 
 ### Solver Modules
 
@@ -188,24 +185,7 @@ config = XSA_LAKER_Config(
 | `compute_kernel_matrix` | `laker_xsa.attention.functional` |
 | `apply_kernel_operator` | `laker_xsa.solver.functional` |
 
-## Running Tests
-
-```bash
-# Run all tests
-pytest tests/ -v
-
-# With coverage
-pytest tests/ --cov=laker_xsa --cov-report=html
-
-# Run specific categories
-pytest tests/test_attention.py -v
-pytest tests/test_laker_v2.py -v
-pytest tests/test_gradients.py -v
-```
-
 ## Benchmarks
-
-### Runtime Comparison (typical)
 
 | Attention Type | Forward (ms) | Backward (ms) | Relative |
 |----------------|--------------|---------------|----------|
@@ -214,39 +194,37 @@ pytest tests/test_gradients.py -v
 | Kernel (v1) | 1.5 | 2.5 | 6.0x |
 | Fused (v1) | 1.8 | 3.0 | 8.0x |
 
-*Results vary by hardware and sequence length*
+*Results vary by hardware and sequence length. See [RESULTS.md](RESULTS.md) for full details.*
 
-### Conditioning Improvement
+## Roadmap
 
-The CCCP learned preconditioner reduces kernel condition numbers by 10-1000x, enabling dramatically faster PCG convergence versus unpreconditioned solvers.
+- [ ] Sparse kernel implementation for long sequences
+- [ ] Custom CUDA kernels for fused operations
+- [ ] Adaptive iteration count based on residual
+- [ ] Mixed precision (AMP) support
+- [ ] Hugging Face integration
+- [ ] FlashAttention-style kernel fusion
 
-## Design Principles
+## Contributing
 
-1. **Mathematical fidelity**: Implement equations directly from papers
-2. **Clarity over cleverness**: Prefer readable code over optimization
-3. **Explicit over implicit**: Document all assumptions and approximations
-4. **Testable**: Comprehensive test coverage with zero warnings
-5. **Reproducible**: Configurable random seeds, deterministic options
+Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
-## Limitations
+## Code of Conduct
 
-- **O(n²) complexity**: Limited to ~2048 tokens without modifications
-- **Runtime overhead**: 8-10x slower than standard attention
-- **CCCP mode**: O(n³) per iteration; use `fast` mode for n > 1024
-- **Hyperparameter sensitivity**: Requires tuning for optimal results
+This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md).
 
-See [`docs/limitations.md`](docs/limitations.md) for details.
+## Security
+
+To report security vulnerabilities, please see [SECURITY.md](SECURITY.md).
 
 ## Citation
-
-If you use this implementation in your research:
 
 ```bibtex
 @software{laker-xsa,
   title = {LAKER-XSA: Fused Exclusive Self Attention and LAKER Kernel Attention},
   author = {LAKER-XSA Contributors},
   year = {2026},
-  url = {https://github.com/your-org/laker-xsa},
+  url = {https://github.com/sachn-cs/laker-xsa},
 }
 
 @article{xsa_paper,
@@ -266,14 +244,4 @@ If you use this implementation in your research:
 
 ## License
 
-MIT License. See [LICENSE](LICENSE) for details.
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run tests: `pytest tests/ -v`
-5. Run linting: `pylint laker_xsa/ --rcfile=pyproject.toml`
-6. Run type checking: `mypy laker_xsa/ --ignore-missing-imports`
-7. Submit a pull request
+[MIT](LICENSE)

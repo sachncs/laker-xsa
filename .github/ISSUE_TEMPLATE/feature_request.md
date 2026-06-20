@@ -16,5 +16,12 @@ A clear and concise description of what you want to happen.
 **Describe alternatives you've considered**
 A clear and concise description of any alternative solutions or features you've considered.
 
+**Use case**
+Describe the use case or scenario where this feature would be valuable.
+
 **Additional context**
-Add any other context or screenshots about the feature request here.
+Add any other context, references to papers, or screenshots about the feature request here.
+
+**Checklist**
+- [ ] I have searched existing issues to ensure this is not a duplicate
+- [ ] I have checked the documentation to ensure this is not already supported

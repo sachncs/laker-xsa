@@ -1,0 +1,123 @@
+name: Bug Report
+description: Report a bug to help us improve LAKER-XSA
+title: "[BUG] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Please fill out the information below to help us diagnose and fix the issue.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of what the bug is.
+      placeholder: Tell us what happened...
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Provide a minimal code example or steps to reproduce the issue.
+      placeholder: |
+        ```python
+        import torch
+        from laker_xsa import XSA_LAKER_Config, LakerAttention
+
+        config = XSA_LAKER_Config(d_model=512, num_heads=8)
+        attn = LakerAttention(config)
+        x = torch.randn(2, 128, 512)
+        out = attn(x)  # Error occurs here
+        ```
+      render: python
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen?
+      placeholder: I expected...
+    validations:
+      required: true
+
+  - type: textarea
+    id: error
+    attributes:
+      label: Error Message / Logs
+      description: Paste any error messages or relevant logs.
+      placeholder: |
+        ```
+        Traceback (most recent call last):
+          ...
+        ```
+      render: text
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      options:
+        - Ubuntu/Debian
+        - macOS
+        - Windows
+        - Other Linux
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: python-version
+    attributes:
+      label: Python Version
+      description: "Run `python --version` to check."
+      placeholder: "3.11.4"
+    validations:
+      required: true
+
+  - type: input
+    id: pytorch-version
+    attributes:
+      label: PyTorch Version
+      description: "Run `python -c \"import torch; print(torch.__version__)\"` to check."
+      placeholder: "2.1.0"
+    validations:
+      required: true
+
+  - type: input
+    id: laker-version
+    attributes:
+      label: LAKER-XSA Version
+      description: "Run `python -c \"import laker_xsa; print(laker_xsa.__version__)\"` to check."
+      placeholder: "0.2.3"
+    validations:
+      required: true
+
+  - type: input
+    id: cuda-version
+    attributes:
+      label: CUDA Version (if applicable)
+      description: "Run `nvidia-smi` or `nvcc --version` to check."
+      placeholder: "12.1"
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Any other context about the problem (screenshots, related issues, etc.).
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I have searched existing issues to ensure this is not a duplicate
+          required: true
+        - label: I have included all relevant environment information
+          required: true
+        - label: I have provided a minimal reproduction case
+          required: true

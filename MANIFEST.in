@@ -2,10 +2,10 @@ include README.md
 include LICENSE
 include pyproject.toml
 include RESULTS.md
-recursive-include src *.py
+recursive-include laker_xsa *.py
 recursive-include tests *.py
 recursive-include docs *.md
 recursive-include examples *.py
 exclude examples/__pycache__/*
-exclude src/*/__pycache__/*
+exclude laker_xsa/*/__pycache__/*
 exclude tests/__pycache__/*

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "laker-xsa"
-version = "0.2.0"
+version = "0.2.3"
 description = "Fused Exclusive Self Attention (XSA) and LAKER-style Kernel Attention"
 readme = "README.md"
 license = {text = "MIT"}
@@ -53,9 +53,10 @@ train = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/your-org/laker-xsa"
-Repository = "https://github.com/your-org/laker-xsa.git"
-Issues = "https://github.com/your-org/laker-xsa/issues"
+Homepage = "https://github.com/sachn-cs/laker-xsa"
+Repository = "https://github.com/sachn-cs/laker-xsa.git"
+Issues = "https://github.com/sachn-cs/laker-xsa/issues"
+Changelog = "https://github.com/sachn-cs/laker-xsa/blob/master/CHANGELOG.md"
 
 [project.scripts]
 laker-xsa-train = "laker_xsa.cli.train:main"

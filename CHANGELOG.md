@@ -5,7 +5,26 @@ All notable changes to LAKER-XSA will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.2.0] — Production-Ready Refactoring
+## [Unreleased]
+
+## [0.2.3] — 2026-05-02
+
+### Fixed
+- Version consistency across `pyproject.toml`, `__init__.py`, and `CITATION.cff`
+- Placeholder URLs updated to `github.com/sachn-cs/laker-xsa`
+- `MANIFEST.in` path references corrected from `src/` to `laker_xsa/`
+
+## [0.2.2] — 2026-05-02
+
+### Changed
+- Package metadata improvements
+
+## [0.2.1] — 2026-05-01
+
+### Changed
+- Package metadata improvements
+
+## [0.2.0] — 2026-05-01
 
 ### Added
 - **LakerAttention** (`laker.py`): Breakthrough fused XSA + LAKER attention with:
@@ -61,3 +80,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Example scripts: Comparative analysis, hard benchmarks, long sequence, NLP evaluation
 - Documentation: Architecture overview, mathematical derivations, design decisions, limitations
 - MIT License
+
+[Unreleased]: https://github.com/sachn-cs/laker-xsa/compare/v0.2.3...HEAD
+[0.2.3]: https://github.com/sachn-cs/laker-xsa/compare/v0.2.2...v0.2.3
+[0.2.2]: https://github.com/sachn-cs/laker-xsa/compare/v0.2.1...v0.2.2
+[0.2.1]: https://github.com/sachn-cs/laker-xsa/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/sachn-cs/laker-xsa/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/sachn-cs/laker-xsa/releases/tag/v0.1.0
