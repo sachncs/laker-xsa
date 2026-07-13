@@ -1,16 +1,12 @@
 #!/usr/bin/env python3
-"""
-Long Sequence Benchmark: XSA+LAKER vs Standard Attention.
-
-Tests scaling behavior on sequences of 128, 256, 512, and 1024 tokens.
-Hypothesis: XSA+LAKER benefits should increase with sequence length due to:
-1. More self-exclusion opportunities
-2. Better conditioning becoming more valuable
-3. Kernel regression capturing long-range dependencies
+"""Long-sequence scaling benchmark: train a fresh model per attention
+type and per sequence length, then report test loss, accuracy, speed,
+and memory. The deprecated v1 path is selected via
+``attention_type="fused"``; ``"fused_v2"`` selects the current
+:class:`LakerAttention` instead.
 
 Usage:
     python -m examples.long_sequence_benchmark --task retrieval --max-seq-len 512
-    python -m examples.long_sequence_benchmark --task copy --max-seq-len 1024
 """
 
 from __future__ import annotations
@@ -33,7 +29,11 @@ def create_copy_task(
     seq_len: int,
     vocab_size: int,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Copy task: output equals input."""
+    """Build copy tasks: target equals input.
+
+    Returns:
+        ``(input_ids, target_ids)`` of shape ``(num_samples, seq_len)``.
+    """
     input_ids = torch.randint(0, vocab_size, (num_samples, seq_len))
     target_ids = input_ids.clone()
     return input_ids, target_ids
@@ -44,7 +44,11 @@ def create_reversal_task(
     seq_len: int,
     vocab_size: int,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Reversal task: output is reversed input."""
+    """Build reversal tasks: target is the input reversed along the time axis.
+
+    Returns:
+        ``(input_ids, target_ids)`` of shape ``(num_samples, seq_len)``.
+    """
     input_ids = torch.randint(0, vocab_size, (num_samples, seq_len))
     target_ids = input_ids.flip(dims=[1])
     return input_ids, target_ids
@@ -55,11 +59,19 @@ def create_retrieval_task(
     seq_len: int,
     vocab_size: int,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """
-    Long-context retrieval with distractors.
+    """Build long-context retrieval examples with random distractor positions.
 
-    Format: [query_marker, D1, D2, ..., target, ..., Dn]
-    Model must find target at a position indicated by query_marker value.
+    Layout (per sample):
+
+    * Position 0 carries the ``query_marker`` (token ``vocab_size - 1``).
+    * The target sits at a random offset in ``[seq_len // 4, seq_len - 1)``;
+      every other position is a random distractor.
+
+    Targets emit the target value at the query position and zero elsewhere.
+
+    Returns:
+        ``(input_ids, target_ids)`` of shape ``(num_samples, seq_len)``
+        and dtype ``torch.long``.
     """
     input_ids = torch.zeros((num_samples, seq_len), dtype=torch.long)
     target_ids = torch.zeros((num_samples, seq_len), dtype=torch.long)
@@ -67,22 +79,22 @@ def create_retrieval_task(
     query_marker = vocab_size - 1
 
     for i in range(num_samples):
-        # Query position encodes where target is (as fraction of seq_len)
+        # Query-position information is implicit in the marker.
         target_offset = torch.randint(seq_len // 4, seq_len - 1, (1,)).item()
         target_value = torch.randint(1, vocab_size // 2, (1,)).item()
 
-        # Fill with random distractors
+        # Fill with random distractors across all positions.
         input_ids[i] = torch.randint(1, vocab_size - 1, (seq_len,))
 
-        # Place query marker at position 0
+        # Query marker at position 0.
         input_ids[i, 0] = query_marker
 
-        # Place target at computed position
+        # Place the target value at the computed offset.
         input_ids[i, target_offset] = target_value
 
-        # Target: output target_value at position 0
+        # Target emits the value at the query position; everything else is 0.
         target_ids[i, 0] = target_value
-        target_ids[i, 1:] = 0  # Ignore other positions
+        target_ids[i, 1:] = 0
 
     return input_ids, target_ids
 
@@ -92,24 +104,26 @@ def create_first_last_match_task(
     seq_len: int,
     vocab_size: int,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """
-    First-last matching task.
+    """Build first-last matching tasks with a binary answer at the final slot.
 
-    Given first token X, find if X appears elsewhere in sequence.
-    Output 1 if match found at end, 0 otherwise.
+    For each sample, the target is ``1`` iff the value at position 0
+    appears anywhere in the middle positions; ``0`` otherwise.
 
-    This tests long-range dependency: must compare position 0 with all others.
+    Returns:
+        ``(input_ids, target_ids)`` of shape ``(num_samples, seq_len)``
+        and dtype ``torch.long``; ``target_ids`` is zero except for the
+        final slot.
     """
     input_ids = torch.randint(1, vocab_size - 1, (num_samples, seq_len))
     target_ids = torch.zeros((num_samples, seq_len), dtype=torch.long)
 
     for i in range(num_samples):
         first_token = input_ids[i, 0]
-        # Check if first token appears in middle portion
+        # Middle positions only — the final position holds the answer.
         middle = input_ids[i, 1:-1]
         has_match = (middle == first_token).any().item()
 
-        # Target: binary at last position
+        # Target: binary at the last position.
         target_ids[i, -1] = 1 if has_match else 0
 
     return input_ids, target_ids
@@ -124,7 +138,14 @@ def create_model(
     attention_type: str,
     dropout: float = 0.1,
 ) -> XSALAKERTransformer:
-    """Create Transformer model."""
+    """Construct an :class:`XSALAKERTransformer` with the requested attention.
+
+    Uses ``XSA_LAKER_Config`` with ``kernel_type="rbf"``,
+    ``xsa_mode="subtract_projection"``, ``num_iterations=10``,
+    ``preconditioner_rank=d_model // 16``, and ``d_ff = 4 * d_model``.
+
+    The benchmark loop only ever passes ``"standard"`` and ``"fused"``.
+    """
     config = XSA_LAKER_Config(
         d_model=d_model,
         num_heads=num_heads,
@@ -155,13 +176,20 @@ def train_model(
     learning_rate: float,
     device: torch.device,
 ) -> Dict[str, List[float]]:
-    """Train model and return history."""
+    """Train ``model`` with AdamW (lr, weight_decay 0.01) and grad-norm clip 1.0.
+
+    Per-token loss uses ``reduction="none"`` and is averaged to a scalar
+    per batch.
+
+    Returns:
+        ``{"train_losses": [...], "val_losses": [...]}`` lists of per-epoch
+        means.
+    """
     model = model.to(device)
     optimizer = torch.optim.AdamW(
         model.parameters(), lr=learning_rate, weight_decay=0.01
     )
     criterion = nn.CrossEntropyLoss(reduction="none")
-
     train_losses = []
     val_losses = []
 
@@ -178,7 +206,7 @@ def train_model(
             optimizer.zero_grad()
             logits = model(input_ids)
 
-            # Per-token loss, then mean
+            # Mean over flattened positions — equivalent to default CE.
             loss = criterion(logits.view(-1, logits.size(-1)), target_ids.view(-1))
             loss = loss.mean()
             loss.backward()
@@ -217,7 +245,7 @@ def evaluate_model(
     test_loader: DataLoader,
     device: torch.device,
 ) -> Tuple[float, float]:
-    """Evaluate model on test set."""
+    """Return ``(avg_loss, accuracy)`` across the whole test loader."""
     model.eval()
     total_loss = 0.0
     correct = 0
@@ -248,17 +276,24 @@ def measure_inference_speed(
     device: torch.device,
     num_runs: int = 20,
 ) -> Dict[str, float]:
-    """Measure inference speed."""
+    """Measure forward-pass throughput for long sequence lengths.
+
+    Methodology: batch size ``2``; three warm-up forwards precede timing;
+    no :func:`torch.cuda.synchronize` gating.
+
+    Returns:
+        ``{"ms_per_sample": float, "samples_per_second": float}``.
+    """
     model.eval()
     batch_size = 2  # Smaller batch for long sequences
     input_ids = torch.randint(0, 100, (batch_size, seq_len), device=device)
 
-    # Warmup
+    # Warm-up
     for _ in range(3):
         with torch.no_grad():
             _ = model(input_ids)
 
-    # Timing
+    # Timing window
     start = time.perf_counter()
     for _ in range(num_runs):
         with torch.no_grad():
@@ -277,7 +312,14 @@ def measure_memory(
     seq_len: int,
     device: torch.device,
 ) -> Dict[str, float]:
-    """Estimate memory usage during forward pass."""
+    """Estimate peak memory during one forward pass (batch size 2).
+
+    On CUDA: :func:`torch.cuda.max_memory_allocated` in MiB.
+    On CPU: ``3 * param_mb`` heuristic — coarse sanity check only.
+
+    Returns:
+        ``{"peak_memory_mb": float}``.
+    """
     model.eval()
     batch_size = 2
     input_ids = torch.randint(0, 100, (batch_size, seq_len), device=device)
@@ -288,9 +330,9 @@ def measure_memory(
             _ = model(input_ids)
         peak_mb = torch.cuda.max_memory_allocated() / 1024 / 1024
     else:
-        # CPU: rough estimate from parameter count
+        # CPU heuristic: parameter footprint times a small multiplier.
         param_mb = sum(p.numel() * 4 for p in model.parameters()) / 1024 / 1024
-        peak_mb = param_mb * 3  # Rough multiplier for activations
+        peak_mb = param_mb * 3
 
     return {"peak_memory_mb": peak_mb}
 
@@ -316,7 +358,13 @@ def run_scaling_benchmark(
     learning_rate: float = 1e-3,
     seed: int = 42,
 ) -> Dict[str, Any]:
-    """Run scaling benchmark across sequence lengths."""
+    """Train both attention types on each probed sequence length.
+
+    Iterates over ``[s for s in SEQ_LENS if s <= max_seq_len]``.
+
+    Raises:
+        ValueError: If ``task_name`` is not in :data:`TASKS`.
+    """
     torch.manual_seed(seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"\nUsing device: {device}")
@@ -325,7 +373,7 @@ def run_scaling_benchmark(
     if task_fn is None:
         raise ValueError(f"Unknown task: {task_name}")
 
-    # Determine sequence lengths to test
+    # Filter SEQ_LENS to those at or below the user-selected cap.
     seq_lens = [s for s in SEQ_LENS if s <= max_seq_len]
 
     results: Dict[str, Any] = {
@@ -343,7 +391,7 @@ def run_scaling_benchmark(
         print(f"Testing sequence length: {seq_len}")
         print("=" * 60)
 
-        # Adjust dataset size for longer sequences
+        # Dataset sizing shrinks with longer sequences.
         num_train = max(500, 2000 - seq_len * 2)
         num_val = 200
         num_test = 200
@@ -404,7 +452,7 @@ def run_scaling_benchmark(
                 f"Acc={test_accuracy:.4f}, Speed={speed['samples_per_second']:.1f}/s"
             )
 
-        # Compute comparison
+        # Compute comparison when both runs completed.
         std_acc = seq_results["attention_types"]["standard"]["test_accuracy"]
         fused_acc = seq_results["attention_types"]["fused"]["test_accuracy"]
         std_speed = seq_results["attention_types"]["standard"]["speed_metrics"][
@@ -430,7 +478,7 @@ def run_scaling_benchmark(
 
 
 def main() -> None:
-    """Main entry point."""
+    """Parse CLI args, run the scaling benchmark, and optionally write JSON."""
     parser = argparse.ArgumentParser(description="Long sequence scaling benchmark")
     parser.add_argument(
         "--task",
