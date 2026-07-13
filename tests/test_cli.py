@@ -1,4 +1,17 @@
-"""Smoke tests for CLI entry points (train, benchmark, evaluate)."""
+"""Smoke tests for CLI entry points (train, benchmark, evaluate).
+
+Train CLI runs end-to-end with each attention type accepted by the model
+(``standard``, ``xsa``, ``kernel``, ``fused`` deprecated v1,
+``fused_v2`` current). Benchmark CLI writes a JSON file containing
+``config`` and ``results`` keys. The Evaluate CLI is importable and
+exposes a callable ``main``; deeper flows need a checkpoint fixture, so
+they are not exercised here.
+
+The deprecated v1 attention classes used by some paths emit
+:class:`DeprecationWarning` at import time; the module-level
+``pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")``
+keeps the test logs clean.
+"""
 
 from __future__ import annotations
 
