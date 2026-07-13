@@ -1,7 +1,9 @@
-"""
-Tests for solver modules.
+"""Tests for the solver stack.
 
-This module tests the preconditioner and conjugate gradient solver.
+Covers the standalone position-based ``LearnedPreconditioner``, the PCG-style
+solver used by v2 attention, and the regularized kernel operator. Tests check
+initial factor shapes/positivity, identity and PSD-system cases, and callback
+integration; they do not establish convergence for arbitrary systems.
 """
 
 from __future__ import annotations
@@ -16,7 +18,7 @@ from laker_xsa.solver.conjugate_gradient import pcg_solve, apply_kernel_operator
 
 @pytest.fixture
 def config() -> XSA_LAKER_Config:
-    """Create test configuration."""
+    """``(d_model=64, num_heads=4, head_dim=16, preconditioner_rank=4)`` config."""
     return XSA_LAKER_Config(
         d_model=64,
         num_heads=4,
