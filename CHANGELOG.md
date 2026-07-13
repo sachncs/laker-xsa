@@ -7,11 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **pylint E1102 `not-callable` at 5 call sites** (commit `6d62150`, 2026-07-13T13:13:04Z).
+  Switched the solver/benchmarks code from `torch.nn.functional.softplus` and
+  `torch.linalg.vector_norm` (C-extension builtins whose `__call__` pylint's
+  astroid inference cannot resolve) to the equivalent `nn.Softplus()` module
+  instance and `torch.sqrt(torch.sum(...))`. Why: CI pylint score was 9.80/10
+  with five E1102 errors blocking a clean run; suppression directives were
+  rejected as not addressing the underlying inference problem, so the actual
+  call expressions were rewritten to ones astroid resolves correctly. Runtime
+  behavior is identical (verified: `pylint` 10.00/10, `black` clean, `mypy`
+  no errors, `pytest` 269 passed).
+
+### Changed
+- **README restructured** to match the reference template (commit `6d62150`,
+  2026-07-13T13:13:04Z): centered HTML title block, reordered sections
+  (Features → Installation → Quick Start → Configuration → Project Structure
+  → Development → Tech Stack → Benchmarks → Roadmap → Contributing → Code of
+  Conduct → Security → Citation → License), and a new Tech Stack table. The
+  "From PyPI" subsection was dropped because the package is not yet
+  published. Why: the existing README used a different layout than the
+  project's reference template; aligning the structure while preserving
+  every LAKER-XSA-specific fact (arXiv IDs, module names, CLI commands,
+  test counts, dataclass fields, benchmark numbers) keeps the docs
+  discoverable across sibling repositories.
+
+### Documentation
+- **Author / contact updated to `sachin` <sachncs@gmail.com>** (commit
+  `6d62150`, 2026-07-13T13:13:04Z): replaced the `LAKER-XSA Contributors`
+  placeholder in `README.md`, `CITATION.cff`, `LICENSE`, `pyproject.toml`,
+  and `docs/FINAL_SUMMARY.md`. Why: the package has a single maintainer and
+  should be attributed and contactable as such.
+
 ## [0.2.3] — 2026-05-02
 
 ### Fixed
 - Version consistency across `pyproject.toml`, `__init__.py`, and `CITATION.cff`
-- Placeholder URLs updated to `github.com/sachn-cs/laker-xsa`
+- Placeholder URLs updated to `github.com/sachncs/laker-xsa`
 - `MANIFEST.in` path references corrected from `src/` to `laker_xsa/`
 
 ## [0.2.2] — 2026-05-02
@@ -81,9 +113,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Documentation: Architecture overview, mathematical derivations, design decisions, limitations
 - MIT License
 
-[Unreleased]: https://github.com/sachn-cs/laker-xsa/compare/v0.2.3...HEAD
-[0.2.3]: https://github.com/sachn-cs/laker-xsa/compare/v0.2.2...v0.2.3
-[0.2.2]: https://github.com/sachn-cs/laker-xsa/compare/v0.2.1...v0.2.2
-[0.2.1]: https://github.com/sachn-cs/laker-xsa/compare/v0.2.0...v0.2.1
-[0.2.0]: https://github.com/sachn-cs/laker-xsa/compare/v0.1.0...v0.2.0
-[0.1.0]: https://github.com/sachn-cs/laker-xsa/releases/tag/v0.1.0
+[Unreleased]: https://github.com/sachncs/laker-xsa/compare/v0.2.3...HEAD
+[0.2.3]: https://github.com/sachncs/laker-xsa/compare/v0.2.2...v0.2.3
+[0.2.2]: https://github.com/sachncs/laker-xsa/compare/v0.2.1...v0.2.2
+[0.2.1]: https://github.com/sachncs/laker-xsa/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/sachncs/laker-xsa/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/sachncs/laker-xsa/releases/tag/v0.1.0
