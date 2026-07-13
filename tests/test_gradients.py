@@ -1,7 +1,15 @@
-"""
-Gradient flow tests for LAKER-XSA.
+"""Gradient-flow regression tests for the LAKER-XSA stack.
 
-This module verifies that gradients flow correctly through all components.
+A single ``output.sum().backward()`` call must produce finite input
+gradients for Standard, XSA, deprecated v1 :class:`FusedXSALAKERAttention`,
+and v2 :class:`LakerAttention`. The v1 fused attention's parameter
+gradients are also checked for finiteness; multiple training-style
+backward passes on the full model must stay NaN/Inf-free.
+
+The deprecated v1 ``FusedXSALAKERAttention`` emits
+:class:`DeprecationWarning` on import; the module-level ``pytestmark =
+pytest.mark.filterwarnings("ignore::DeprecationWarning")`` suppresses
+those so the warning does not appear in test output.
 """
 
 from __future__ import annotations
@@ -22,7 +30,7 @@ pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
 
 @pytest.fixture
 def config() -> XSA_LAKER_Config:
-    """Create test configuration."""
+    """Small ``(d_model=64, num_heads=4)`` test config with ``dropout=0``."""
     return XSA_LAKER_Config(d_model=64, num_heads=4, dropout=0.0)
 
 
