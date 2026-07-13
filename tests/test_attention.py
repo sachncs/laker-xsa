@@ -1,8 +1,18 @@
-"""
-Tests for attention modules.
+"""Tests for the attention module surface.
 
-This module tests the core attention implementations including
-standard, XSA, kernel, and fused variants.
+Covers the four ``attention`` entry points that ``XSALAKERTransformer``
+selects between:
+
+* :class:`StandardMultiHeadAttention` — vanilla MHA baseline.
+* :class:`ExclusiveSelfAttention` — XSA-only mode (``subtract_projection``,
+  ``zero_diagonal``, ``mask``).
+* :class:`KernelAttentionRegression` — deprecated v1 kernel path.
+* :class:`FusedXSALAKERAttention` — deprecated v1 fused attention.
+
+The deprecated v1 classes emit :class:`DeprecationWarning` on import,
+which the module-level ``pytestmark = pytest.mark.filterwarnings(
+"ignore::DeprecationWarning")`` suppresses so the warnings stay out of
+test logs.
 """
 
 from __future__ import annotations
@@ -23,7 +33,7 @@ pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
 
 @pytest.fixture
 def config() -> XSA_LAKER_Config:
-    """Create test configuration."""
+    """Standard ``(d_model=64, num_heads=4, head_dim=16)`` config for tests."""
     return XSA_LAKER_Config(
         d_model=64,
         num_heads=4,
@@ -39,7 +49,7 @@ def config() -> XSA_LAKER_Config:
 
 @pytest.fixture
 def sample_input(config: XSA_LAKER_Config) -> torch.Tensor:
-    """Create sample input tensor."""
+    """Random ``(2, 32, d_model)`` Gaussian input for forward tests."""
     return torch.randn(2, 32, config.d_model)
 
 
