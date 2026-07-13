@@ -1,4 +1,15 @@
-"""Tests for model components (MLP, block, full model)."""
+"""Tests for the model wrappers: :class:`MLP`, block, and full model.
+
+Covers :class:`laker_xsa.model.transformer_block.MLP` (shape preservation,
+finite outputs, ``dropout`` toggle, GELU / ReLU gradients),
+:class:`XSALAKERTransformerBlock` (every documented ``attention_type``
+— ``standard`` / ``xsa`` / ``kernel`` / ``fused`` / ``fused_v2`` — and
+``ValueError`` on unknown values), and :class:`XSALAKERTransformer`
+(token-id path ``(batch, seq_len) → (batch, seq_len, vocab_size)``;
+embedding path ``(batch, seq_len, d_model) → (batch, seq_len, d_model)``;
+``ValueError`` on mismatched shapes; causal mask passthrough; finite
+parameter gradients on the token-id path).
+"""
 
 from __future__ import annotations
 
