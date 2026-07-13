@@ -1,4 +1,14 @@
-"""Tests for utility functions (masks, shapes, seeds)."""
+"""Tests for utility helpers (masks, shapes, seeding).
+
+Covers :func:`create_causal_mask` (lower-triangular ``(1, seq_len,
+seq_len)``, honours ``device``), :func:`create_padding_mask`
+(``(batch, 1, 1, seq_len)`` with ``True`` on valid tokens; ``2D``
+enforcement raises :class:`ValueError`), :func:`verify_tensor_shapes`
+(``(None, ...)`` wildcards, ``ValueError`` on mismatch), and
+:func:`set_seed` / :func:`get_rng_states` / :func:`set_rng_states`
+(reproducible across ``python`` / ``numpy`` / ``torch``; ``KeyError`` on
+missing required keys).
+"""
 
 from __future__ import annotations
 
