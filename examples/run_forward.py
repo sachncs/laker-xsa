@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
-"""
-Simple forward pass example with LAKER-XSA.
+"""Forward-pass smoke test: build standard attention, the deprecated v1
+:class:`FusedXSALAKERAttention` (from the
+:mod:`laker_xsa.attention.kernel_attention` shim), and a full
+:class:`XSALAKERTransformer`; run ``no_grad`` forwards on CPU random
+inputs and print shapes, output norms, and the diff between the two
+attention variants.
 
-This script demonstrates basic usage of the fused XSA + LAKER attention.
+Set ``attention_type="fused_v2"`` on the model (or import
+:class:`LakerAttention` directly) for the current v2 attention.
 
 Usage:
     python -m examples.run_forward
@@ -19,7 +24,7 @@ from laker_xsa.model.full_model import XSALAKERTransformer
 
 
 def main() -> None:
-    """Run forward pass examples."""
+    """Run forward passes for the standard attention, fused v1, and full model."""
     print("=" * 60)
     print("LAKER-XSA Forward Pass Example")
     print("=" * 60)
