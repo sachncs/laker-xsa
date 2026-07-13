@@ -1,6 +1,14 @@
-"""Tests for training modules (losses, trainer).
+"""Tests for the training utilities.
 
-Covers label_smoothing_cross_entropy, TrainingConfig, and Trainer.
+Covers :func:`laker_xsa.training.losses.label_smoothing_cross_entropy`
+(returns a scalar ``Tensor`` for 2D and 3D inputs; ``ignore_index``
+support without divide-by-zero; ``smoothing`` outside ``[0, 1)`` raises
+:class:`ValueError`; near-zero loss for overwhelming correct-logit
+predictions with ``smoothing=0.0``),
+:class:`laker_xsa.training.trainer.TrainingConfig` (documented defaults,
+custom values), and :class:`laker_xsa.training.trainer.Trainer`
+(``step_count`` advancement, ``epoch_loss`` metric dict, NaN/Inf-free
+across many steps).
 """
 
 from __future__ import annotations
@@ -14,9 +22,7 @@ from laker_xsa.model.full_model import XSALAKERTransformer
 from laker_xsa.training.losses import label_smoothing_cross_entropy
 from laker_xsa.training.trainer import Trainer, TrainingConfig
 
-# ---------------------------------------------------------------------------
 # label_smoothing_cross_entropy
-# ---------------------------------------------------------------------------
 
 
 class TestLabelSmoothingCrossEntropy:
@@ -90,9 +96,7 @@ class TestLabelSmoothingCrossEntropy:
         assert torch.isfinite(logits.grad).all()
 
 
-# ---------------------------------------------------------------------------
 # TrainingConfig
-# ---------------------------------------------------------------------------
 
 
 class TestTrainingConfig:
@@ -112,9 +116,7 @@ class TestTrainingConfig:
         assert cfg.label_smoothing == 0.0
 
 
-# ---------------------------------------------------------------------------
 # Trainer
-# ---------------------------------------------------------------------------
 
 
 class TestTrainer:
