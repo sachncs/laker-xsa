@@ -1,16 +1,46 @@
 """Legacy v1 kernel attention module (deprecated).
 
-This module contains the original v1 implementation of LAKER kernel attention.
-It is kept for backward compatibility with existing code and benchmarks.
+This module preserves the original v1 LAKER kernel-attention implementation
+so that older training scripts, benchmarks and checkpoints keep loading. Every
+public class in this module emits a :class:`DeprecationWarning` when
+constructed; new work should instead use
+:class:`~laker_xsa.attention.laker.LakerAttention`.
 
-For new work, use LakerAttention from laker.py, which implements the correct
-LAKER preconditioner (CCCP-based) with PCG solver and proper XSA fusion.
+Backward compatibility / deprecation boundary:
+    * ``KernelFunction`` — kept only for legacy kernels (``"rbf"``,
+      ``"linear"``, ``"cosine"``) and the misnamed ``"exp_attention"``
+      alias that the v1 module mapped onto RBF. Superseded by
+      :class:`~laker_xsa.attention.kernels.AttentionKernel`.
+    * ``LearnedPreconditioner`` — the v1 position-embedding-based
+      preconditioner. Superseded by
+      :class:`~laker_xsa.solver.laker_preconditioner.LakerPreconditioner`.
+    * ``KernelAttentionRegression`` — v1 attention module using Richardson
+      iteration and ``KernelFunction`` / ``LearnedPreconditioner``. Superseded
+      by :class:`~laker_xsa.attention.laker.LakerAttention`.
+    * ``FusedXSALAKERAttention`` — v1 attempt at fusing XSA-style diagonal
+      zeroing with the kernel regression. Superseded by
+      :class:`~laker_xsa.attention.laker.LakerAttention`.
+    * ``estimate_min_eigval`` — internal diagnostic helper used by
+      ``KernelAttentionRegression.solve_system``.
 
-Key issues with v1 (fixed in v2 / laker.py):
-  - Uses wrong kernel (RBF/linear/cosine instead of exp(QK^T/sqrt(d)))
-  - Preconditioner is position-embedding-based, not CCCP spectral learning
-  - Uses fixed-iteration Richardson instead of PCG with convergence monitoring
-  - Missing all LAKER safeguards (shrinkage, trace normalization, eps guard)
+Key differences from v2:
+    * ``KernelFunction`` uses RBF, linear, or shifted-cosine kernels; its
+      ``"exp_attention"`` option is an alias for RBF. The v2 path constructs
+      :class:`AttentionKernel` instead.
+    * The preconditioner uses learned position factors rather than the v2 CCCP
+      or fast parameterizations.
+    * The iterative solve is fixed-budget Richardson rather than PCG.
+    * It does not perform CCCP shrinkage or trace normalization. Its learned
+      ``diag_scale`` and ``reg`` are unconstrained, so its effective diagonal
+      is not guaranteed positive.
+    * The fused class zeros the kernel diagonal before applying any mask. A
+      typical causal mask then produces a nonsymmetric lower-triangular
+      kernel; adding positive diagonal regularization generally makes that
+      triangular system nonsingular but does not make it SPD.
+
+The classes in this module are re-exported as a compatibility shim from
+:mod:`laker_xsa.attention.kernel_attention` so that pre-v2 import paths
+``from laker_xsa.attention.kernel_attention import ...`` continue to resolve.
 """
 
 from __future__ import annotations
@@ -34,7 +64,14 @@ _DEPRECATION_MSG = (
 class KernelFunction(nn.Module):
     """[DEPRECATED] Kernel function for v1 kernel attention.
 
-    Use AttentionKernel from laker_xsa.attention.kernels instead.
+    .. deprecated::
+        Superseded by
+        :class:`~laker_xsa.attention.kernels.AttentionKernel`. The
+        ``"exp_attention"`` literal here is a v1 alias for the RBF
+        implementation; it is not the exponential dot-product kernel used by
+        :class:`~laker_xsa.attention.kernels.AttentionKernel`.
+
+    Emits :class:`DeprecationWarning` from the constructor.
     """
 
     def __init__(
@@ -42,6 +79,19 @@ class KernelFunction(nn.Module):
         kernel_type: Literal["rbf", "linear", "cosine", "exp_attention"],
         eps: float = 1e-6,
     ) -> None:
+        """Initialize the selected v1 kernel.
+
+        Args:
+            kernel_type: ``"rbf"`` and ``"exp_attention"`` both select the
+                same RBF implementation; ``"linear"`` and ``"cosine"`` select
+                their named implementations. Validation is deferred to
+                :meth:`forward`.
+            eps: Value added to the softplus-derived RBF bandwidth.
+
+        Side Effects:
+            Emits :class:`DeprecationWarning`. RBF modes allocate a learnable
+            scalar ``bandwidth`` parameter.
+        """
         warnings.warn(
             _DEPRECATION_MSG.format("KernelFunction"),
             DeprecationWarning,
@@ -55,6 +105,20 @@ class KernelFunction(nn.Module):
             self.bandwidth = nn.Parameter(torch.tensor(1.0))
 
     def forward(self, q: torch.Tensor, k: torch.Tensor) -> torch.Tensor:
+        """Dispatch to the selected v1 kernel.
+
+        Args:
+            q: Queries of shape ``(..., seq_len, head_dim)``.
+            k: Keys of shape ``(..., seq_len, head_dim)``.
+
+        Returns:
+            Kernel matrix with shape ``(..., seq_len, seq_len)`` whose
+            specific value range depends on ``self.kernel_type``.
+
+        Raises:
+            ValueError: If ``self.kernel_type`` is not one of the four
+                recognised literals.
+        """
         if self.kernel_type in ("rbf", "exp_attention"):
             return self.rbf_kernel(q, k)
         if self.kernel_type == "linear":
@@ -64,6 +128,19 @@ class KernelFunction(nn.Module):
         raise ValueError(f"Unknown kernel type: {self.kernel_type}")
 
     def rbf_kernel(self, q: torch.Tensor, k: torch.Tensor) -> torch.Tensor:
+        """Compute the v1 squared-exponential kernel.
+
+        Uses ``exp(-||q_i-k_j||^2 / (2*bw^2))`` with
+        ``bw = softplus(bandwidth) + eps``. Expanded squared distances are
+        clamped at zero before exponentiation.
+
+        Args:
+            q: Query features shaped ``(..., query_len, head_dim)``.
+            k: Key features shaped ``(..., key_len, head_dim)``.
+
+        Returns:
+            Kernel shaped ``(..., query_len, key_len)``.
+        """
         bw = F.softplus(self.bandwidth) + self.eps
         q_norm_sq = (q * q).sum(dim=-1, keepdim=True)
         k_norm_sq = (k * k).sum(dim=-1, keepdim=True)
@@ -76,9 +153,28 @@ class KernelFunction(nn.Module):
         return torch.exp(-dist_sq / (2.0 * bw * bw))
 
     def linear_kernel(self, q: torch.Tensor, k: torch.Tensor) -> torch.Tensor:
+        """Compute the biased linear kernel ``q @ k.T + 1``.
+
+        Args:
+            q: Query features shaped ``(..., query_len, head_dim)``.
+            k: Key features shaped ``(..., key_len, head_dim)``.
+
+        Returns:
+            Kernel shaped ``(..., query_len, key_len)``.
+        """
         return torch.matmul(q, k.transpose(-2, -1)) + 1.0
 
     def cosine_kernel(self, q: torch.Tensor, k: torch.Tensor) -> torch.Tensor:
+        """Compute shifted cosine similarity ``normalize(q) @ normalize(k).T + 1``.
+
+        Args:
+            q: Query features shaped ``(..., query_len, head_dim)``.
+            k: Key features shaped ``(..., key_len, head_dim)``.
+
+        Returns:
+            Kernel shaped ``(..., query_len, key_len)`` with mathematical range
+            ``[0, 2]`` for finite real inputs, subject to rounding.
+        """
         q_norm = F.normalize(q, dim=-1)
         k_norm = F.normalize(k, dim=-1)
         return torch.matmul(q_norm, k_norm.transpose(-2, -1)) + 1.0
@@ -87,10 +183,32 @@ class KernelFunction(nn.Module):
 class LearnedPreconditioner(nn.Module):
     """[DEPRECATED] Position-embedding-based preconditioner (v1).
 
-    Use LakerPreconditioner from laker_xsa.solver.laker_preconditioner instead.
+    .. deprecated::
+        Superseded by
+        :class:`~laker_xsa.solver.laker_preconditioner.LakerPreconditioner`,
+        which provides CCCP, fast low-rank-plus-diagonal, diagonal, and identity
+        modes.
+
+    Implements ``P = diag(d) + U U^T`` where:
+
+    * ``d = softplus(kernel_diag) * diag_scale + reg`` — an unconstrained
+      learned affine transformation of a positive softplus value; and
+    * ``U = pos_embedding[:seq_len] @ head_proj`` — a position-dependent
+      low-rank factor shared across the batch.
+
+    Emits :class:`DeprecationWarning` from the constructor.
     """
 
     def __init__(self, config: XSA_LAKER_Config) -> None:
+        """Initialize the v1 position-based preconditioner.
+
+        Args:
+            config: Supplies ``num_heads`` and ``preconditioner_rank``.
+
+        Side Effects:
+            Emits :class:`DeprecationWarning`, allocates parameters/buffers, and
+            advances PyTorch RNG state when low-rank factors are initialized.
+        """
         warnings.warn(
             _DEPRECATION_MSG.format("LearnedPreconditioner"),
             DeprecationWarning,
@@ -120,6 +238,22 @@ class LearnedPreconditioner(nn.Module):
     def forward(
         self, kernel_diag: torch.Tensor, seq_len: int
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        """Compute the v1 preconditioner factors for the kernel system.
+
+        Args:
+            kernel_diag: Diagonal of the kernel matrix of shape
+                ``(batch, num_heads, seq_len)``.
+            seq_len: Sequence length used to slice the position embedding.
+
+        Returns:
+            Tuple ``(diag_precond, lr_precond)`` where:
+
+            * ``diag_precond`` is ``(batch, num_heads, seq_len)`` — the
+              diagonal preconditioner.
+            * ``lr_precond`` is
+              ``(batch, num_heads, min(seq_len, 2048), rank)`` or ``None``.
+              Overlength factors fail when later applied to longer residuals.
+        """
         batch = kernel_diag.shape[0]
 
         diag_precond = F.softplus(kernel_diag) * self.diag_scale + self.reg
@@ -138,6 +272,17 @@ class LearnedPreconditioner(nn.Module):
         diag_precond: torch.Tensor,
         lr_precond: Optional[torch.Tensor],
     ) -> torch.Tensor:
+        """Apply ``P @ residual`` in the v1 diagonal + low-rank form.
+
+        Args:
+            residual: ``(batch, num_heads, seq_len, head_dim)`` residual.
+            diag_precond: ``(batch, num_heads, seq_len)`` diagonal factor.
+            lr_precond: Optional ``(batch, num_heads, seq_len, rank)`` low-
+                rank factor; ignored when ``None``.
+
+        Returns:
+            Preconditioned residual of the same shape as ``residual``.
+        """
         precond = residual * diag_precond.unsqueeze(-1)
 
         if lr_precond is not None:
@@ -148,12 +293,34 @@ class LearnedPreconditioner(nn.Module):
 
 
 class KernelAttentionRegression(nn.Module):
-    """[DEPRECATED] v1 kernel regression with Richardson iteration.
+    """[DEPRECATED] v1 kernel regression attention with Richardson iteration.
 
-    Use LakerAttention from laker_xsa.attention.laker instead.
+    .. deprecated::
+        Superseded by :class:`~laker_xsa.attention.laker.LakerAttention`, which
+        uses an exponential attention kernel, configurable v2 preconditioning,
+        and the PCG-style recurrence.
+
+    The forward pass projects ``x`` through four Linear layers, builds a
+    kernel with :class:`KernelFunction`, masks it, computes ``diag_precond``
+    and ``lr_precond`` from :class:`LearnedPreconditioner`, solves the
+    regularised system with fixed-iteration Richardson, and finally applies
+    the kernel matrix to the solution ``alpha``.
+
+    Emits :class:`DeprecationWarning` from the constructor.
     """
 
     def __init__(self, config: XSA_LAKER_Config) -> None:
+        """Initialize deprecated kernel-regression attention.
+
+        Args:
+            config: Supplies projection sizes, v1 kernel type, preconditioner
+                rank, Richardson budget, regularization, and clamp values.
+
+        Side Effects:
+            Emits deprecation warnings for this module and its nested v1 kernel
+            and preconditioner, allocates learnable layers/parameters, and
+            advances PyTorch RNG state during initialization.
+        """
         warnings.warn(
             _DEPRECATION_MSG.format("KernelAttentionRegression"),
             DeprecationWarning,
@@ -184,6 +351,25 @@ class KernelAttentionRegression(nn.Module):
         diag_precond: torch.Tensor,
         lr_precond: Optional[torch.Tensor],
     ) -> torch.Tensor:
+        """Solve ``(K + lambda*I) @ alpha = V`` with preconditioned Richardson.
+
+        Args:
+            kernel: ``(batch, num_heads, seq_len, seq_len)`` kernel matrix.
+            values: ``(batch, num_heads, seq_len, head_dim)`` value vectors
+                ``V``.
+            diag_precond: ``(batch, num_heads, seq_len)`` diagonal factor.
+            lr_precond: Optional ``(batch, num_heads, seq_len, rank)`` low-
+                rank factor.
+
+        Returns:
+            ``alpha`` of shape ``(batch, num_heads, seq_len, head_dim)``.
+
+        Side Effects:
+            Computes a first-slice ``eigvalsh`` diagnostic under
+            ``torch.no_grad()`` and emits a warning when its returned minimum is
+            negative. For nonsymmetric input that value is not a valid spectrum
+            of the original matrix.
+        """
         batch, num_heads, seq_len, head_dim = values.shape
         device = values.device
 
@@ -219,6 +405,22 @@ class KernelAttentionRegression(nn.Module):
     def forward(
         self, x: torch.Tensor, mask: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
+        """Project, build the v1 kernel and solve the regression.
+
+        Args:
+            x: ``(batch, seq_len, d_model)`` token embeddings.
+            mask: Optional mask. A 3-D mask receives a singleton head axis;
+                any other shape is multiplied with the kernel using PyTorch
+                broadcasting rules.
+
+        Returns:
+            ``(batch, seq_len, d_model)`` attention output.
+
+        Raises:
+            ValueError: If ``x.shape`` cannot be unpacked as a 3-D tensor.
+            RuntimeError: Propagated from projections, reshaping, masking,
+                preconditioning, or matrix multiplication.
+        """
         batch, seq_len, _ = x.shape
 
         q = self.w_q(x)
@@ -247,12 +449,28 @@ class KernelAttentionRegression(nn.Module):
 
 
 class FusedXSALAKERAttention(nn.Module):
-    """[DEPRECATED] v1 fused XSA + LAKER attention.
+    """[DEPRECATED] v1 attempt at fusing XSA with LAKER kernel regression.
 
-    Use LakerAttention from laker_xsa.attention.laker instead.
+    .. deprecated::
+        Superseded by
+        :class:`~laker_xsa.attention.laker.LakerAttention`. This v1 class
+        zeros the diagonal before applying any external mask and uses its
+        Richardson-based kernel regression.
+
+    Emits :class:`DeprecationWarning` from the constructor.
     """
 
     def __init__(self, config: XSA_LAKER_Config) -> None:
+        """Initialize deprecated fused v1 attention.
+
+        Args:
+            config: Supplies projection, v1 kernel, XSA, Richardson,
+                preconditioner, regularization, and clamp settings.
+
+        Side Effects:
+            Emits deprecation warnings for this class and nested v1 modules,
+            allocates parameters/buffers, and advances PyTorch RNG state.
+        """
         warnings.warn(
             _DEPRECATION_MSG.format("FusedXSALAKERAttention"),
             DeprecationWarning,
@@ -281,6 +499,18 @@ class FusedXSALAKERAttention(nn.Module):
             self.register_buffer("xsa_scale", torch.ones(1))
 
     def apply_xsa_to_kernel(self, kernel: torch.Tensor) -> torch.Tensor:
+        """Zero the kernel diagonal (v1 XSA; unconditional).
+
+        This helper does not inspect an external mask. If a causal mask is
+        applied later, the resulting kernel is typically lower triangular with
+        a zero diagonal; the solver subsequently adds ``lambda * I``.
+
+        Args:
+            kernel: ``(batch, num_heads, seq_len, seq_len)`` kernel.
+
+        Returns:
+            New tensor with ``kernel[..., i, i] == 0`` everywhere.
+        """
         _, _, seq_len, _ = kernel.shape
         diag_mask = torch.eye(seq_len, device=kernel.device, dtype=kernel.dtype)
         diag_mask = diag_mask.view(1, 1, seq_len, seq_len)
@@ -293,6 +523,25 @@ class FusedXSALAKERAttention(nn.Module):
         diag_precond: torch.Tensor,
         lr_precond: Optional[torch.Tensor],
     ) -> torch.Tensor:
+        """Solve the regularized v1 system with fixed Richardson updates.
+
+        Args:
+            kernel: Kernel shaped ``(batch, num_heads, seq_len, seq_len)``.
+            values: Right-hand side shaped
+                ``(batch, num_heads, seq_len, head_dim)``.
+            diag_precond: Diagonal payload shaped
+                ``(batch, num_heads, seq_len)``.
+            lr_precond: Optional factor shaped
+                ``(batch, num_heads, seq_len, rank)``.
+
+        Returns:
+            Final fixed-budget iterate with the same shape as ``values``. No
+            convergence status is returned; non-finite values can propagate.
+
+        Raises:
+            RuntimeError: Propagated from tensor operations for incompatible
+                shapes, dtypes, or devices.
+        """
         batch, num_heads, seq_len, _ = values.shape
         device = values.device
 
@@ -320,6 +569,21 @@ class FusedXSALAKERAttention(nn.Module):
     def forward(
         self, x: torch.Tensor, mask: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
+        """Forward pass — same shape semantics as :class:`KernelAttentionRegression`.
+
+        Args:
+            x: ``(batch, seq_len, d_model)`` token embeddings.
+            mask: Optional mask broadcastable to
+                ``(batch, num_heads, seq_len, seq_len)``.
+
+        Returns:
+            ``(batch, seq_len, d_model)`` attention output.
+
+        Raises:
+            ValueError: If ``x.shape`` cannot be unpacked as a 3-D tensor.
+            RuntimeError: Propagated from projections, reshaping, masking,
+                preconditioning, or matrix multiplication.
+        """
         batch, seq_len, _ = x.shape
 
         q = (
@@ -363,7 +627,21 @@ class FusedXSALAKERAttention(nn.Module):
 
 
 def estimate_min_eigval(kernel: torch.Tensor) -> float:
-    """Estimate minimum eigenvalue via eigendecomposition on first batch/head."""
+    """Estimate the minimum eigenvalue of the first ``(batch, head)`` slice.
+
+    ``torch.linalg.eigvalsh`` is called directly on ``kernel[0, 0]``. This is
+    meaningful as an eigenvalue diagnostic only when that slice is symmetric;
+    the function does not check symmetry.
+
+    Args:
+        kernel: ``(batch, num_heads, seq_len, seq_len)`` tensor. Only the
+            slice ``kernel[0, 0]`` is used.
+
+    Returns:
+        The minimum value returned by ``torch.linalg.eigvalsh`` for
+        ``kernel[0, 0]`` as a Python float, or ``float('nan')`` if
+        ``torch.linalg.eigvalsh`` raises ``LinAlgError`` or ``RuntimeError``.
+    """
     try:
         eigs = torch.linalg.eigvalsh(kernel[0, 0])
         return float(eigs.min().item())
