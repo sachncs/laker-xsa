@@ -1,8 +1,20 @@
-"""
-Benchmark tests for LAKER-XSA.
+"""Smoke tests for the benchmark helpers in :mod:`laker_xsa.benchmarks`.
 
-This module provides smoke tests for the benchmark modules to ensure
-they run correctly. Full benchmarks should be run separately.
+Covers :func:`laker_xsa.benchmarks.long_context.long_context_benchmark`
+(per-(seq_len, attention-type) accuracy and loss under ``config`` /
+``results`` keys),
+:func:`laker_xsa.benchmarks.conditioning.compute_conditioning_metrics`
+(``raw_condition_mean`` and ``regularized_condition_mean``; regularisation
+must not worsen conditioning), and
+:func:`laker_xsa.benchmarks.runtime.runtime_profile` /
+:func:`profile_iterations` (``forward`` / ``backward`` keys with
+non-zero ``mean_ms``; ``iterations`` and ``residual_norms`` of expected
+length, finite residuals, strictly positive ``initial_residual`` and
+``final_residual``).
+
+The runtime-profile tests use the deprecated v1
+:class:`FusedXSALAKERAttention` to match the example scripts; use
+:class:`LakerAttention` directly if profiling the v2 path.
 """
 
 from __future__ import annotations
