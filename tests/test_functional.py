@@ -1,7 +1,8 @@
-"""Tests for functional API (stateless functions).
+"""Tests for the functional (stateless) API of LAKER-XSA.
 
-Tests compute_kernel_matrix and apply_kernel_operator,
-the thin functional wrappers over class-based Modules.
+Covers 2-D, 3-D, and 4-D kernel inputs, default finite/positive results,
+normalization, symmetry, temperature, unequal query/key lengths, and the
+regularized kernel operator's shape and simple identity cases.
 """
 
 from __future__ import annotations
