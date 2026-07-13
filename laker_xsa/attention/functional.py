@@ -1,13 +1,14 @@
-"""Functional API for attention kernels.
+"""Functional (stateless) API for attention kernels.
 
 This module provides stateless functional counterparts to the class-based
-Modules in the attention subpackage. These follow the same design as
-torch.nn.functional relative to torch.nn: the functional forms accept all
-parameters explicitly and do not hold learnable state.
+modules in the attention subpackage. They follow the same design as
+``torch.nn.functional`` relative to ``torch.nn``: the functional forms accept
+all parameters explicitly and do not hold learnable state, which makes them
+convenient for ad-hoc analysis, scripting and unit tests.
 
 Functional form            Class-based form
 -----------------          -----------------
-compute_kernel_matrix     AttentionKernel.forward
+``compute_kernel_matrix``  :meth:`AttentionKernel.forward`
 """
 
 from __future__ import annotations
@@ -26,20 +27,43 @@ def compute_kernel_matrix(
     symmetric: bool = False,
     eps: float = 1e-6,
 ) -> torch.Tensor:
-    """Compute attention kernel: K_{ij} = exp(sim(q_i, k_j) / temperature).
+    """Compute an exponential attention kernel matrix.
 
-    Stateless functional counterpart to AttentionKernel.forward().
+    The returned entries are ``exp(sim(q_i, k_j) / temperature) + eps``.
+    This is the stateless counterpart to :meth:`AttentionKernel.forward`.
+    Two similarity modes are supported:
+
+    * ``normalize_qk=True`` (default): Q and K are L2-normalised along the
+      feature dimension, so scores are cosine similarities in ``[-1, 1]``.
+    * ``normalize_qk=False``: raw dot products are scaled by
+      ``1 / sqrt(head_dim)`` (Vaswani-style) and then divided by ``temperature``.
+
+    Scores are clipped to ``[-100, 100]`` before exponentiation. This does not
+    prevent ``exp(100)`` from overflowing in lower-precision dtypes. Neither
+    optional symmetric averaging nor entrywise positivity implies positive
+    semidefiniteness, and negative ``eps`` can make entries non-positive.
 
     Args:
-        q: Queries (..., seq_len, head_dim).
-        k: Keys (..., seq_len, head_dim).
-        temperature: Temperature for attention sharpness control.
-        normalize_qk: L2-normalize Q/K before computing similarity.
-        symmetric: Symmetrize output kernel.
-        eps: Numerical stability term.
+        q: Queries with shape ``(..., query_len, head_dim)``.
+        k: Keys with broadcast-compatible leading dimensions and shape
+            ``(..., key_len, head_dim)``.
+        temperature: Score divisor. It is not validated; zero or negative
+            values can produce non-finite or inverted scores.
+        normalize_qk: If ``True``, use cosine similarity; otherwise use
+            scaled-dot similarity.
+        symmetric: If ``True``, return ``(K + K^T) / 2``. This requires equal
+            query/key lengths and enforces symmetry, not PSD.
+        eps: Scalar added to every kernel entry; its sign is not validated.
 
     Returns:
-        Kernel matrix (..., seq_len, seq_len).
+        Kernel matrix of shape ``(..., query_len, key_len)``. Non-finite inputs,
+        zero temperature, and dtype overflow can produce non-finite outputs.
+
+    Raises:
+        ZeroDivisionError: If the raw-dot branch receives ``head_dim == 0``.
+        RuntimeError: Propagated from :func:`torch.matmul`,
+            :func:`torch.exp`, or :func:`torch.nn.functional.normalize`
+            for incompatible shapes, dtypes, or devices.
     """
     if normalize_qk:
         q = F.normalize(q, dim=-1)
