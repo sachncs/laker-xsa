@@ -1,27 +1,26 @@
-from __future__ import annotations
+"""Public API for LAKER-XSA attention, solver, and Transformer modules.
 
-# LAKER-XSA: Fused Exclusive Self Attention and LAKER Kernel Attention.
-#
-# This package implements a breakthrough Transformer attention mechanism that fuses:
-#
-# 1. Exclusive Self Attention (XSA): Removes self-aligned components to force
-#    context-only aggregation (arXiv:2603.09078)
-#
-# 2. LAKER Kernel Attention: Frames attention as kernel ridge regression with
-#    learned preconditioning via CCCP for improved conditioning (arXiv:2604.25138)
-#
-# The v2 fusion (LakerAttention) is a novel, unpublished combination
-# that solves two fundamental failure modes of standard attention:
-# - Self-bias (tokens copy themselves) — fixed by XSA
-# - Spectral collapse (eigenvalue decay) — fixed by LAKER kernel inverse
-#
-# Example:
-#     from laker_xsa import XSA_LAKER_Config, LakerAttention
-#
-#     config = XSA_LAKER_Config(d_model=512, num_heads=8)
-#     attn = LakerAttention(config)
-#     x = torch.randn(2, 128, 512)
-#     out = attn(x)
+The package exposes standard scaled dot-product attention, Exclusive Self
+Attention (XSA), and the v2 :class:`LakerAttention` implementation. XSA modes
+modify score diagonals and/or subtract a regularized output projection. The
+LAKER path builds an exponential attention kernel and applies a configurable
+preconditioner with an iterative linear-system solve. The implementation cites
+the XSA (arXiv:2603.09078) and LAKER (arXiv:2604.25138) references elsewhere in
+the repository.
+
+Subpackages separate attention primitives, iterative solvers, Transformer model
+composition, training helpers, benchmarks, utilities, and command-line entry
+points. Deprecated v1 kernel-regression classes remain exported for checkpoint
+and import compatibility; new integrations should use :class:`LakerAttention`.
+
+Example:
+    >>> import torch
+    >>> from laker_xsa import LakerAttention, XSA_LAKER_Config
+    >>> config = XSA_LAKER_Config(d_model=512, num_heads=8)
+    >>> output = LakerAttention(config)(torch.randn(2, 128, 512))
+    >>> output.shape
+    torch.Size([2, 128, 512])
+"""
 
 from laker_xsa.config import XSA_LAKER_Config
 from laker_xsa.attention import (
@@ -47,24 +46,18 @@ from laker_xsa.utils.tensor_ops import create_causal_mask
 
 __all__ = [
     "XSA_LAKER_Config",
-    # Core abstractions
     "BaseMultiHeadAttention",
-    # Attention modules
     "StandardMultiHeadAttention",
     "ExclusiveSelfAttention",
     "LakerAttention",
     "LakerAttentionLayer",
-    # Backward-compat
     "KernelAttentionRegression",
     "FusedXSALAKERAttention",
     "FusedXSALAKERAttentionV2",
     "XSALAKERAttentionV2",
-    # Kernels
     "AttentionKernel",
-    # Model
     "XSALAKERTransformerBlock",
     "XSALAKERTransformer",
-    # Utils
     "check_finite",
     "create_causal_mask",
 ]
