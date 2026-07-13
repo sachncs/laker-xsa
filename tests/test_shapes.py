@@ -1,8 +1,19 @@
-"""
-Shape verification tests for LAKER-XSA.
+"""Shape verification tests for the LAKER-XSA components.
 
-This module tests that all components produce correct output shapes
-across various input configurations.
+* :class:`StandardMultiHeadAttention` preserves ``(batch, seq_len,
+  d_model)`` for batch sizes ``[1, 2, 4, 8]`` and sequence lengths
+  ``[16, 32, 64, 128]``.
+* :class:`ExclusiveSelfAttention` and the deprecated v1
+  :class:`FusedXSALAKERAttention` are verified for batch sizes
+  ``[1, 2, 4]`` and sequence lengths ``[16, 32, 64]``.
+* :class:`XSALAKERTransformerBlock` preserves the same shape.
+* The full :class:`XSALAKERTransformer` returns
+  ``(batch, seq_len, vocab_size)`` when ``vocab_size`` is set and
+  ``(batch, seq_len, d_model)`` when ``vocab_size=None``.
+
+The deprecated v1 ``FusedXSALAKERAttention`` emits
+:class:`DeprecationWarning` on import; the module-level ``pytestmark =
+pytest.mark.filterwarnings("ignore::DeprecationWarning")`` suppresses it.
 """
 
 from __future__ import annotations
