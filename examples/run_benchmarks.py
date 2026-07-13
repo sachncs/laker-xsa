@@ -1,8 +1,15 @@
 #!/usr/bin/env python3
-"""
-Run all benchmarks for LAKER-XSA.
+"""Run the full LAKER-XSA benchmark suite and write a combined JSON report.
 
-This script runs the full benchmark suite and saves results.
+Sequentially invokes four :mod:`laker_xsa.benchmarks` helpers:
+:func:`laker_xsa.benchmarks.long_context.long_context_benchmark`,
+:func:`laker_xsa.benchmarks.conditioning.compute_conditioning_metrics`,
+:func:`laker_xsa.benchmarks.runtime.runtime_profile`, and
+:func:`laker_xsa.benchmarks.runtime.profile_iterations`.
+
+The runtime profile step imports the deprecated v1
+:class:`FusedXSALAKERAttention` from the
+:mod:`laker_xsa.attention.kernel_attention` shim.
 
 Usage:
     python -m examples.run_benchmarks --output benchmark_results.json
@@ -23,7 +30,7 @@ from laker_xsa.benchmarks.runtime import runtime_profile, profile_iterations
 
 
 def main() -> None:
-    """Run full benchmark suite."""
+    """Run all four benchmark helpers and persist a combined JSON report."""
     parser = argparse.ArgumentParser(description="Run LAKER-XSA benchmarks")
     parser.add_argument(
         "--output",
