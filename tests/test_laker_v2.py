@@ -1,7 +1,31 @@
-"""Tests for flagship LakerAttention v2 and AttentionKernel.
+"""Tests for ``LakerAttention`` and its v2 kernel/preconditioner stack.
 
-Covers LakerAttention, LakerAttentionLayer, LakerPreconditioner, and
-AttentionKernel comprehensively.
+Covers the v2 modules in detail:
+
+* :class:`AttentionKernel` — the learnable-temperature kernel used by
+  :class:`LakerAttention`.
+* :class:`LakerAttention` — the fused XSA + LAKER attention.
+* :class:`LakerAttentionLayer` — a thin wrapper whose sharing flag is stored
+  but does not currently share preconditioners.
+* :class:`LakerPreconditioner` — ``cccp``, ``fast``, ``diagonal``, and ``none``
+  modes; arbitrary unknown strings also fall through to ``None``.
+* Stateless :func:`compute_kernel_matrix` from
+  :mod:`laker_xsa.attention.kernels`.
+
+Verified invariants:
+
+* :class:`LakerAttention` is deterministic in ``eval()`` mode.
+* ``lambda_reg`` is strictly positive (softplus-parameterised).
+* The ``zero_diagonal`` helper returns a kernel whose main diagonal is
+  effectively zero (``abs() < 1e-6``); the ``clean_self_projection``
+  helper preserves the input shape.
+* RMS-normalised outputs have per-sample RMS close to 1.
+* :class:`LakerPreconditioner`'s ``step_counter`` increments on every forward;
+ cached values are returned when ``force_update=False`` is
+  paired with ``update_frequency=0`` (or when the cadence skips).
+* :class:`AttentionKernel` exposes a ``log_temperature`` parameter when
+  ``learnable_temperature=True`` and clamps the effective temperature
+  to a fixed range when a large fixed value is requested.
 """
 
 from __future__ import annotations
@@ -17,12 +41,11 @@ from laker_xsa.solver.laker_preconditioner import LakerPreconditioner
 
 @pytest.fixture
 def config() -> XSA_LAKER_Config:
+    """``(d_model=64, num_heads=4)`` config with ``dropout=0`` and ``eps=1e-6``."""
     return XSA_LAKER_Config(d_model=64, num_heads=4, dropout=0.0, eps=1e-6)
 
 
-# ---------------------------------------------------------------------------
 # AttentionKernel
-# ---------------------------------------------------------------------------
 
 
 class TestAttentionKernel:
@@ -93,9 +116,7 @@ class TestAttentionKernel:
         assert (K > 0).all()
 
 
-# ---------------------------------------------------------------------------
 # LakerAttention (v2)
-# ---------------------------------------------------------------------------
 
 
 class TestLakerAttention:
@@ -211,9 +232,7 @@ class TestLakerAttention:
         assert torch.isfinite(out).all()
 
 
-# ---------------------------------------------------------------------------
 # LakerAttentionLayer
-# ---------------------------------------------------------------------------
 
 
 class TestLakerAttentionLayer:
@@ -249,9 +268,7 @@ class TestLakerAttentionLayer:
         assert out.shape == x.shape
 
 
-# ---------------------------------------------------------------------------
 # LakerPreconditioner
-# ---------------------------------------------------------------------------
 
 
 class TestLakerPreconditioner:
@@ -348,9 +365,7 @@ class TestLakerPreconditioner:
         assert lr is None
 
 
-# ---------------------------------------------------------------------------
 # compute_kernel_matrix functional
-# ---------------------------------------------------------------------------
 
 
 class TestFunctionalKernel:
