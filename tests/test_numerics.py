@@ -1,8 +1,35 @@
-"""
-Numerical stability tests for LAKER-XSA.
+"""Numerical stability tests for LAKER-XSA modules.
 
-This module tests numerical stability under edge cases including
-very long sequences, extreme values, and ill-conditioned inputs.
+Stress-test attention modules and stability utilities against:
+
+* Very large / very small input magnitudes (Gaussian × ``100`` and
+  ``1e-6``).
+* Long sequences (``seq_len`` 256 and 512) that tax the iterative solver
+  path inside the deprecated v1 fused class.
+* The stability helpers :func:`check_finite` and :func:`clamp_tensor`.
+
+Verified invariants:
+
+* :class:`StandardMultiHeadAttention`, :class:`ExclusiveSelfAttention`,
+  the deprecated v1 :class:`FusedXSALAKERAttention`, and the v2
+  :class:`LakerAttention` return finite outputs on inputs scaled by
+  ``100`` and ``1e-6``.
+* Fused v1 attention remains finite at ``seq_len=512`` with
+  ``num_iterations=20``.
+* :func:`clamp_tensor` with no bounds returns the original tensor;
+  with bounds it enforces them.
+* :func:`check_finite` returns ``False`` for NaN / +Inf / -Inf tensors and
+  raises :class:`ValueError` when ``raise_error=True``.
+* Identical seeds yield identical parameter tensors across separately
+  constructed v1 fused attention modules (determinism).
+* The v1 fused attention and :class:`LakerAttention` are deterministic
+  in ``eval()`` mode — two consecutive forwards produce bit-equal
+  outputs.
+
+The deprecated v1 ``FusedXSALAKERAttention`` emits
+:class:`DeprecationWarning` on import; the module-level ``pytestmark =
+pytest.mark.filterwarnings("ignore::DeprecationWarning")`` suppresses
+those so the test output stays clean.
 """
 
 from __future__ import annotations
@@ -22,7 +49,7 @@ pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
 
 @pytest.fixture
 def config() -> XSA_LAKER_Config:
-    """Create test configuration."""
+    """``(d_model=64, num_heads=4)`` config with ``dropout=0``."""
     return XSA_LAKER_Config(d_model=64, num_heads=4, dropout=0.0)
 
 
