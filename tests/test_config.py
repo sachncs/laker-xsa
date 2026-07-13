@@ -1,4 +1,17 @@
-"""Tests for configuration validation (XSA_LAKER_Config)."""
+"""Tests for :class:`XSA_LAKER_Config` construction and validation.
+
+Covers the canonical defaults (``dropout=0.0``, ``eps=1e-6``,
+``lambda_init=3.0``, ``kernel_type="exp_attention"``,
+``xsa_mode="subtract_projection"``, ``preconditioner_type="fast"``,
+``kernel_temperature=1.0``, ``kernel_symmetric=False``,
+``kernel_normalize_qk=True``, ``precond_update_frequency=1``,
+``pcg_tolerance=1e-2``, ``clip_abs=1e6``), ``head_dim`` default-filling,
+``effective_pcg_iters`` passthrough, round-tripping of all recognised
+enum values, and validation rejections for illegal inputs (non-divisible
+``d_model``, unknown enum strings, ``pcg_max_iterations <= 0``,
+``num_iterations <= 0``, ``dropout`` outside ``[0, 1]``, non-positive
+``eps``, negative ``lambda_init``).
+"""
 
 from __future__ import annotations
 
