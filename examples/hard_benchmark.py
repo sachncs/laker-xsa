@@ -1,17 +1,14 @@
 #!/usr/bin/env python3
-"""
-Hard Benchmark: XSA+LAKER vs Standard Transformer.
+"""Hard benchmark: train both attention types on synthetic high-signal
+tasks (``retrieval``, ``multihop``, ``noisy_copy``, ``binding``) chosen
+to be difficult enough that neither model achieves 100% accuracy.
 
-This script evaluates attention mechanisms on challenging tasks that specifically
-test the benefits of Exclusive Self Attention and LAKER kernel regression:
+The deprecated v1 path is selected via ``attention_type="fused"``
+(:class:`FusedXSALAKERAttention`); ``"fused_v2"`` selects the current
+:class:`LakerAttention` instead.
 
-1. Long-context retrieval with distractors - tests XSA's ability to exclude self
-2. Multi-hop reasoning - tests improved conditioning from kernel regression
-3. Noisy copy with masking - tests context-only aggregation
-4. Variable binding - tests association without self-copying
-
-These tasks are designed to be hard enough that both models don't achieve 100%
-accuracy, allowing us to measure actual performance differences.
+Usage:
+    python -m examples.hard_benchmark --task retrieval --seq-len 64
 """
 
 from __future__ import annotations
@@ -28,9 +25,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from laker_xsa.config import XSA_LAKER_Config
 from laker_xsa.model.full_model import XSALAKERTransformer
 
-# =============================================================================
-# Hard Task Definitions
-# =============================================================================
+# Hard task definitions
 
 
 def create_retrieval_task(
@@ -38,42 +33,55 @@ def create_retrieval_task(
     seq_len: int,
     vocab_size: int,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """
-    Create a long-context retrieval task with distractors.
+    """Build long-context retrieval examples with random distractor positions.
 
-    Input format: [query_token, D1, D2, ..., Dk, target, D(k+1), ..., <EOS>]
-    The query token at position 0 indicates which distractor position contains
-    the target to copy. The model must attend to the correct distant position
-    while ignoring all others including itself.
+    Layout (per sample):
 
-    This specifically tests XSA's self-exclusion capability.
+    * Position 0 holds the ``query_marker`` (token ``vocab_size - 1``).
+    * Position ``target_pos`` (chosen from ``[seq_len // 2, seq_len - 1)``)
+      carries the target value; every other non-query position is a random
+      distractor token from ``[1, vocab_size - 2)``.
+
+    Targets emit the target value at the query position and a copy of the
+    input elsewhere — this is CE-supervised on the entire sequence; the
+    query-position accuracy is the metric of interest.
+
+    Args:
+        num_samples: Number of independently sampled examples.
+        seq_len: Total sequence length including the query marker.
+        vocab_size: Vocabulary size; reserves ``vocab_size - 1`` as the
+            query marker.
+
+    Returns:
+        ``(input_ids, target_ids)`` of shape ``(num_samples, seq_len)``
+        and dtype ``torch.long``.
     """
     input_ids = torch.zeros((num_samples, seq_len), dtype=torch.long)
     target_ids = torch.zeros((num_samples, seq_len), dtype=torch.long)
 
-    # Use special tokens: 0=padding, vocab_size-1=query marker, vocab_size-2=target marker
+    # Token reservations: 0=padding, vocab-1=query marker, vocab-2=target marker.
     query_marker = vocab_size - 1
     target_marker = vocab_size - 2
 
     for i in range(num_samples):
-        # Random target position in second half
+        # Random target position in the second half.
         target_pos = torch.randint(seq_len // 2, seq_len - 1, (1,)).item()
 
-        # Set query marker at position 0
+        # Query marker at position 0.
         input_ids[i, 0] = query_marker
 
-        # Fill all other positions with random distractors
+        # Fill all other positions with random distractors.
         distractors = torch.randint(1, vocab_size - 2, (seq_len - 1,))
 
-        # Place target at target_pos
+        # Place target value at the chosen position.
         target_value = torch.randint(1, vocab_size // 2, (1,)).item()
         distractors[target_pos - 1] = target_value
 
         input_ids[i, 1:] = distractors
 
-        # Target: output target_value at query position, padding elsewhere
+        # Target: target_value at the query position; copy rest for CE training.
         target_ids[i, 0] = target_value
-        target_ids[i, 1:] = input_ids[i, 1:]  # Copy rest for training signal
+        target_ids[i, 1:] = input_ids[i, 1:]
 
     return input_ids, target_ids
 
@@ -83,41 +91,50 @@ def create_multihop_task(
     seq_len: int,
     vocab_size: int,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """
-    Create a multi-hop reasoning task.
+    """Build chain-of-pointers examples that require multi-hop reasoning.
 
-    Input: Chain of pointers [A, ptr_to_B, ptr_to_C, ..., ptr_to_target, ...]
-    Each position i contains a pointer (index) to the next position in chain.
-    Output: The final target value after following the chain.
+    A chain of length 3–5 selects random positions ``chain_positions``.
+    Each chain position ``j`` (except the last) holds a pointer
+    ``max_value + chain_positions[j + 1]``; the last chain position holds
+    the final value. Position 0 is the query marker pointing at the
+    first chain position.
 
-    This tests improved conditioning - the kernel regression should help
-    solve the linear system implied by following pointer chains.
+    Args:
+        num_samples: Number of independently sampled examples.
+        seq_len: Total sequence length.
+        vocab_size: Vocabulary size; the upper half
+            ``[vocab_size // 2, vocab_size)`` is reserved for pointers.
+
+    Returns:
+        ``(input_ids, target_ids)`` of shape ``(num_samples, seq_len)``
+        and dtype ``torch.long``.
     """
     input_ids = torch.zeros((num_samples, seq_len), dtype=torch.long)
     target_ids = torch.zeros((num_samples, seq_len), dtype=torch.long)
 
-    max_value = vocab_size // 2  # Reserve upper half for pointer markers
+    # Reserve the upper half of the vocab for pointer markers.
+    max_value = vocab_size // 2
 
     for i in range(num_samples):
-        # Create random chain of length 3-5
+        # Random chain length of 3-5, clipped to fit the sequence.
         chain_length = torch.randint(3, min(6, seq_len // 2)).item()
         chain_positions = torch.randperm(seq_len - 1)[:chain_length].sort().values + 1
 
-        # Place values at chain positions
+        # Random values for each chain node (last node carries the "answer").
         values = torch.randint(1, max_value, (chain_length + 1,))
 
         for j, pos in enumerate(chain_positions):
             if j < chain_length - 1:
-                # Pointer to next position
+                # Intermediate nodes hold a pointer to the next chain node.
                 input_ids[i, pos] = max_value + chain_positions[j + 1]
             else:
-                # Last position has final value
+                # The terminal node stores the final value.
                 input_ids[i, pos] = values[j]
 
-        # Position 0 is query - pointer to first in chain
+        # Position 0 is the query marker pointing at the first chain node.
         input_ids[i, 0] = max_value + chain_positions[0]
 
-        # Target: at position 0, output the final value in chain
+        # Target: the final chain value at the query position; copy elsewhere.
         target_ids[i, 0] = values[-1]
         target_ids[i, 1:] = input_ids[i, 1:]
 
@@ -130,14 +147,22 @@ def create_noisy_copy_task(
     vocab_size: int,
     noise_ratio: float = 0.3,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """
-    Create a noisy copy task with masked positions.
+    """Build copy tasks where a fraction of positions are masked with noise.
 
-    Input: Sequence with some positions marked as "noise" (special token)
-    Output: Copy only non-noise positions, output zero for noise positions
+    The targets remain the original (pre-corruption) token at every
+    position, so the model must reconstruct each token from context when
+    its own position has been overwritten with the noise marker
+    ``vocab_size - 1``.
 
-    This tests context-only aggregation - the model must learn to attend
-    to clean context while ignoring corrupted self-positions.
+    Args:
+        num_samples: Number of independently sampled examples.
+        seq_len: Sequence length.
+        vocab_size: Vocabulary size; ``vocab_size - 1`` is the noise marker.
+        noise_ratio: Fraction of positions to overwrite; defaults to ``0.3``.
+
+    Returns:
+        ``(input_ids, target_ids)`` of shape ``(num_samples, seq_len)``
+        and dtype ``torch.long``.
     """
     input_ids = torch.randint(1, vocab_size - 1, (num_samples, seq_len))
     target_ids = input_ids.clone()
@@ -145,15 +170,14 @@ def create_noisy_copy_task(
     noise_token = vocab_size - 1
 
     for i in range(num_samples):
-        # Randomly select positions to corrupt
+        # Random subset of positions to corrupt with the noise token.
         num_noisy = int(seq_len * noise_ratio)
         noisy_positions = torch.randperm(seq_len)[:num_noisy]
 
-        # Corrupt input at these positions
+        # Overwrite the chosen positions with the noise marker.
         input_ids[i, noisy_positions] = noise_token
 
-        # Target: original values at noisy positions (must recover from context)
-        # Keep target as original (before corruption)
+        # Targets remain the original (pre-noise) values at those positions.
 
     return input_ids, target_ids
 
@@ -164,17 +188,31 @@ def create_binding_task(
     vocab_size: int,
     num_bindings: int = 4,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """
-    Create a variable binding task.
+    """Build key-value binding examples followed by queries.
 
-    Input: Key-value pairs followed by queries
-    Format: [K1, V1, K2, V2, ..., Kq, ?, ...]
-    where Kq is a key that appeared before, and ? is placeholder
+    Layout (per sample):
 
-    Output: At query positions, output the associated value
+    * Positions ``[0, 2 * num_bindings)`` hold interleaved ``(key, value)``
+      pairs.
+    * Remaining positions are filled with ``(query_marker, query_key)``
+      pairs whose target is the value associated with that key.
 
-    This tests binding without self-copying - the query must attend to
-    its associated key-value pair elsewhere in the sequence.
+    Args:
+        num_samples: Number of independently sampled examples.
+        seq_len: Total sequence length. Must accommodate both the
+            ``num_bindings`` pairs and at least one query.
+        vocab_size: Vocabulary size.
+        num_bindings: Number of (key, value) pairs at the top of the
+            sequence. Defaults to 4.
+
+    Returns:
+        ``(input_ids, target_ids)`` of shape ``(num_samples, seq_len)``
+        and dtype ``torch.long``.
+
+    Notes:
+        With the default ``num_bindings=4``, key IDs ``[2, 6)`` and value IDs
+        ``[10, 14)`` are disjoint. Larger counts can overlap, and callers must
+        choose a vocabulary large enough for every generated ID.
     """
     input_ids = torch.zeros((num_samples, seq_len), dtype=torch.long)
     target_ids = torch.zeros((num_samples, seq_len), dtype=torch.long)
@@ -190,7 +228,7 @@ def create_binding_task(
         pos = 0
         bindings = {}
 
-        # Place key-value pairs
+        # Lay down the key-value pairs first.
         for k, v in zip(keys, values):
             if pos + 1 < seq_len - 2:
                 input_ids[i, pos] = k
@@ -198,24 +236,21 @@ def create_binding_task(
                 bindings[k] = v
                 pos += 2
 
-        # Place queries (use remaining positions)
+        # Fill remaining slots with queries.
         while pos + 1 < seq_len:
-            # Pick random key to query
             query_key = keys[torch.randint(0, len(keys), (1,)).item()]
             input_ids[i, pos] = query_marker
             input_ids[i, pos + 1] = query_key
 
-            # Target: associated value at query_key position + 1
+            # Target is the looked-up value at the query-key position.
             target_ids[i, pos + 1] = bindings[query_key]
-            target_ids[i, :pos] = input_ids[i, :pos]  # Copy keys for training
+            target_ids[i, :pos] = input_ids[i, :pos]
             pos += 2
 
     return input_ids, target_ids
 
 
-# =============================================================================
-# Model and Training
-# =============================================================================
+# Model and training
 
 
 def create_model(
@@ -227,7 +262,25 @@ def create_model(
     attention_type: str,
     dropout: float = 0.1,
 ) -> XSALAKERTransformer:
-    """Create a Transformer model with specified attention type."""
+    """Construct an :class:`XSALAKERTransformer` with the requested attention.
+
+    Uses ``XSA_LAKER_Config`` with ``kernel_type="rbf"``,
+    ``xsa_mode="subtract_projection"``, ``num_iterations=10`` (v1 path
+    knobs), ``preconditioner_rank=d_model // 16``, and ``d_ff = 4 * d_model``.
+
+    Args:
+        d_model: Embedding / hidden dimension.
+        num_heads: Number of attention heads.
+        num_layers: Number of stacked Transformer blocks.
+        vocab_size: Token vocabulary size.
+        max_seq_len: Positional-embedding length.
+        attention_type: Forwarded to :class:`XSALAKERTransformer`;
+            see that class for the accepted literals.
+        dropout: Dropout probability.
+
+    Returns:
+        A newly initialized ``XSALAKERTransformer`` on CPU.
+    """
     config = XSA_LAKER_Config(
         d_model=d_model,
         num_heads=num_heads,
@@ -259,13 +312,17 @@ def train_model(
     learning_rate: float,
     device: torch.device,
 ) -> Dict[str, List[float]]:
-    """Train model and return training history."""
+    """Train ``model`` with AdamW (lr, weight_decay 0.01) and grad-norm clip 1.0.
+
+    Returns:
+        ``{"train_losses": [...], "val_losses": [...]}`` lists of per-epoch
+        mean cross-entropy losses.
+    """
     model = model.to(device)
     optimizer = torch.optim.AdamW(
         model.parameters(), lr=learning_rate, weight_decay=0.01
     )
     criterion = nn.CrossEntropyLoss()
-
     train_losses = []
     val_losses = []
 
@@ -319,10 +376,14 @@ def evaluate_model(
     device: torch.device,
     query_positions: torch.Tensor = None,
 ) -> Tuple[float, float, float]:
-    """
-    Evaluate model on test set.
+    """Evaluate ``model`` and return loss, overall accuracy, query-only accuracy.
 
-    Returns: overall loss, overall accuracy, query-only accuracy
+    Query-position scoring uses ``query_positions`` sliced by
+    ``batch_idx * test_loader.batch_size``; ``None`` skips query-only
+    scoring (which then defaults to ``0``).
+
+    Returns:
+        ``(avg_loss, accuracy, query_accuracy)``.
     """
     model.eval()
     total_loss = 0.0
@@ -345,11 +406,11 @@ def evaluate_model(
 
             preds = logits.argmax(dim=-1)
 
-            # Overall accuracy
+            # Overall accuracy across every position.
             correct += (preds == target_ids).sum().item()
             total += target_ids.numel()
 
-            # Query-only accuracy (only evaluate at query positions if provided)
+            # Query-only accuracy if positions were supplied.
             if query_positions is not None:
                 batch_query_positions = query_positions[
                     batch_idx
@@ -375,7 +436,22 @@ def measure_conditioning(
     seq_len: int,
     device: torch.device,
 ) -> Dict[str, float]:
-    """Measure kernel matrix conditioning for the model."""
+    """Compute the trace-vs-diagonal conditioning proxy on the first block.
+
+    Reads ``blocks[0].attention.w_q`` / ``w_k`` / ``kernel_fn`` when the
+    attention module exposes them (i.e. ``attention_type="fused"``); returns
+    ``{"condition_estimate": inf}`` otherwise.
+
+    Returns:
+        ``{"trace_norm": float, "diag_sum": float, "condition_estimate": float}``
+        on success; ``{"condition_estimate": float("inf")}`` if the
+        attention has no ``kernel_fn`` attribute.
+
+    Notes:
+        This is a *trace proxy*, not the true condition number
+        ``sigma_max / sigma_min``. For rigorous conditioning analysis use
+        :func:`laker_xsa.benchmarks.conditioning.compute_conditioning_metrics`.
+    """
     model.eval()
     config = model.config
 
@@ -411,7 +487,21 @@ def measure_inference_speed(
     device: torch.device,
     num_runs: int = 50,
 ) -> Dict[str, float]:
-    """Measure inference speed."""
+    """Measure forward-pass throughput under ``eval()`` mode.
+
+    Methodology: batch size fixed at ``4``; five warm-up forwards precede
+    the timed window; timing uses :func:`time.perf_counter` only (no
+    :func:`torch.cuda.synchronize` is called).
+
+    Args:
+        model: ``XSALAKERTransformer`` already on ``device``.
+        seq_len: Length of the synthetic random input.
+        device: Target :class:`torch.device`.
+        num_runs: Number of timed forward passes.
+
+    Returns:
+        ``{"ms_per_sample": float, "samples_per_second": float}``.
+    """
     model.eval()
     batch_size = 4
     input_ids = torch.randint(0, 100, (batch_size, seq_len), device=device)
@@ -435,9 +525,7 @@ def measure_inference_speed(
     }
 
 
-# =============================================================================
-# Main Benchmark
-# =============================================================================
+# Main benchmark
 
 
 TASKS = {
@@ -461,7 +549,15 @@ def run_benchmark(
     learning_rate: float = 1e-3,
     seed: int = 42,
 ) -> Dict[str, Any]:
-    """Run benchmark comparing attention types on hard task."""
+    """Train both attention types on ``task_name`` and report a comparison.
+
+    Iterates over ``ATTENTION_TYPES = ["standard", "fused"]`` with the same
+    data splits and seed. Dataset sizes are hard-coded (2000 / 400 / 400
+    train / val / test, batch size 16).
+
+    Raises:
+        ValueError: If ``task_name`` is not in :data:`TASKS`.
+    """
     torch.manual_seed(seed)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -557,7 +653,7 @@ def run_benchmark(
             f"  Inference Speed: {speed_metrics['samples_per_second']:.1f} samples/sec"
         )
 
-    # Compute comparison metrics
+    # Compute comparison metrics when both runs completed.
     if (
         "standard" in results["attention_types"]
         and "fused" in results["attention_types"]
@@ -603,7 +699,7 @@ def run_benchmark(
 
 
 def main() -> None:
-    """Main entry point."""
+    """Parse CLI args and run the hard benchmark; optionally write JSON."""
     parser = argparse.ArgumentParser(
         description="Hard benchmark: XSA+LAKER vs Standard Transformer"
     )
