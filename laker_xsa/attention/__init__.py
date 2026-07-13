@@ -1,15 +1,36 @@
-from __future__ import annotations
+"""Attention module for LAKER-XSA.
 
-# Attention module for LAKER-XSA.
-#
-# Provides:
-#   - StandardMultiHeadAttention (baseline)
-#   - ExclusiveSelfAttention (XSA)
-#   - LakerAttention — breakthrough fused XSA+LAKER (v2)
-#   - LakerAttentionLayer — for Transformer block integration
-#   - Deprecated v1 classes (KernelAttentionRegression, FusedXSALAKERAttention)
-#
-# Core utilities are in core.py; kernel functions in kernels.py.
+Public surface for the attention subpackage. Provides:
+
+* ``StandardMultiHeadAttention`` — Vaswani-style scaled dot-product baseline
+  used as a comparison reference.
+* ``ExclusiveSelfAttention`` — XSA, which removes self-aligned components from
+  attention outputs.
+* ``LakerAttention`` — v2 module combining XSA-related diagonal/projection
+  transformations with preconditioned kernel-regression inverse mixing.
+* ``LakerAttentionLayer`` — thin ``nn.Module`` wrapper used to embed
+  ``LakerAttention`` inside Transformer blocks.
+
+Shared utilities (``BaseMultiHeadAttention``, ``QKVProjection``, mask helpers,
+``reshape_*``) live in :mod:`laker_xsa.attention.core`; kernel implementations
+live in :mod:`laker_xsa.attention.kernels` /
+:mod:`laker_xsa.attention.functional`.
+
+Backward compatibility:
+    The legacy module paths ``attention_kernel``, ``standard_attention``,
+    ``xsa_attention``, ``kernel_attention`` and ``fused_attention_v2`` remain
+    importable. Each shim re-exports its canonical current or deprecated target;
+    it does not implement an additional attention algorithm.
+
+Deprecation:
+    The v1 classes ``KernelFunction``, ``LearnedPreconditioner``,
+    ``KernelAttentionRegression`` and ``FusedXSALAKERAttention`` (re-exported
+    from :mod:`laker_xsa.attention._legacy`) emit ``DeprecationWarning`` at
+    construction time and remain available for existing callers, benchmarks,
+    and checkpoints. New code should use ``LakerAttention``.
+"""
+
+from __future__ import annotations
 
 from laker_xsa.attention.core import (
     BaseMultiHeadAttention,
