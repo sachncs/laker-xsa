@@ -1,22 +1,13 @@
 #!/usr/bin/env python3
-"""
-Real NLP Benchmark: Sentiment Classification with XSA+LAKER.
-
-Uses the IMDB movie review dataset (or AG News if available) to evaluate
-attention mechanisms on a real-world NLP task.
-
-This tests whether XSA+LAKER's mathematical properties translate to
-practical benefits on standard NLP benchmarks.
+"""NLP sentiment benchmark: train both attention types on IMDB, AG
+News, or a synthetic bag-of-words dataset (the default when
+``--dataset synthetic`` is requested or the ``datasets`` download
+fails). The deprecated v1 path is selected via ``attention_type="fused"``;
+``"fused_v2"`` selects the current :class:`LakerAttention` instead.
 
 Usage:
-    # With IMDB (requires datasets package)
-    python -m examples.nlp_sentiment_benchmark --dataset imdb --max-length 256
-
-    # With AG News (text classification)
-    python -m examples.nlp_sentiment_benchmark --dataset agnews --max-length 512
-
-    # Quick test with synthetic data
-    python -m examples.nlp_sentiment_benchmark --dataset synthetic --num-samples 500
+    python -m examples.nlp_sentiment_benchmark --dataset imdb --epochs 5
+    python -m examples.nlp_sentiment_benchmark --dataset synthetic
 """
 
 from __future__ import annotations
@@ -43,7 +34,7 @@ except ImportError:
 
 
 class SentimentDataset(Dataset):
-    """Sentiment classification dataset."""
+    """Thin :class:`torch.utils.data.Dataset` over parallel ``(texts, labels)``."""
 
     def __init__(
         self,
@@ -70,7 +61,12 @@ class SentimentDataset(Dataset):
 
 
 class SimpleTokenizer:
-    """Simple word-level tokenizer with vocabulary."""
+    """Frequency-pruned whitespace tokenizer.
+
+    Reserves ``<PAD> -> 0`` and ``<UNK> -> 1``; :meth:`fit` fills the rest
+    of the vocabulary from the most common tokens. Conversion is
+    case-insensitive.
+    """
 
     def __init__(self, vocab_size: int = 10000) -> None:
         self.vocab_size = vocab_size
@@ -103,7 +99,15 @@ class SimpleTokenizer:
             tokens.extend([0] * (max_length - len(tokens)))
         else:
             tokens = tokens[:max_length]
+        return torch.tensor(tokens, dtype=torch.long)
 
+        for word in text.lower().split():
+            tokens.append(self.word2idx.get(word, 1))  # 1 = <UNK>
+
+        if len(tokens) < max_length:
+            tokens.extend([0] * (max_length - len(tokens)))
+        else:
+            tokens = tokens[:max_length]
         return torch.tensor(tokens, dtype=torch.long)
 
 
@@ -112,11 +116,10 @@ def create_synthetic_dataset(
     max_length: int,
     vocab_size: int,
 ) -> Tuple[List[str], List[int]]:
-    """
-    Create synthetic sentiment dataset.
+    """Generate a bag-of-words sentiment dataset as ``(texts, labels)``.
 
-    Positive reviews contain words from positive set.
-    Negative reviews contain words from negative set.
+    ``vocab_size`` is reserved for API symmetry with the loader helpers
+    and ignored.
     """
     positive_words = [
         "great",
@@ -187,7 +190,25 @@ def load_imdb_dataset(
     max_samples: int = 5000,
     max_length: int = 256,
 ) -> Tuple[List[str], List[int], int]:
-    """Load IMDB dataset."""
+    """Load IMDB with synthetic fallback.
+
+    On failure of the ``datasets.load_dataset("imdb")`` call (missing
+    package, network, auth, schema), falls back to
+    :func:`create_synthetic_dataset` and prints a one-line notice.
+
+    Return shape differs by branch:
+
+    * Synthetic fallback: ``(texts, labels, vocab_size_hint)``.
+    * Real load: ``(train_texts, train_labels, test_texts, test_labels,
+      tokenizer)``.
+
+    Args:
+        max_samples: Cap on the number of IMDB examples per split.
+        max_length: Reserved for API symmetry; ignored during load.
+
+    Side Effects:
+        May download data; may print a fallback notice.
+    """
     if not HAS_DATASETS:
         print("datasets package not installed, falling back to synthetic")
         texts, labels = create_synthetic_dataset(max_samples, max_length, 10000)
@@ -200,7 +221,7 @@ def load_imdb_dataset(
         test_texts = dataset["test"]["text"][: max_samples // 2]
         test_labels = dataset["test"]["label"][: max_samples // 2]
 
-        # Build tokenizer vocabulary
+        # Build tokenizer vocabulary over the union of train and test texts.
         tokenizer = SimpleTokenizer(vocab_size=5000)
         tokenizer.fit(train_texts + test_texts)
 
@@ -215,7 +236,10 @@ def load_agnews_dataset(
     max_samples: int = 5000,
     max_length: int = 256,
 ) -> Tuple:
-    """Load AG News classification dataset."""
+    """Load AG News with synthetic fallback.
+
+    See :func:`load_imdb_dataset` for return-shape details and behaviour.
+    """
     if not HAS_DATASETS:
         texts, labels = create_synthetic_dataset(max_samples, max_length, 10000)
         return texts, labels, 10000
@@ -238,7 +262,12 @@ def load_agnews_dataset(
 
 
 class SentimentClassifier(nn.Module):
-    """Transformer-based sentiment classifier."""
+    """Transformer with ``output_proj=None`` plus a 2-layer MLP head.
+
+    The MLP head operates on the first-position hidden state (a stand-in
+    for ``[CLS]``-style pooling) and produces ``(batch, num_classes)``
+    logits.
+    """
 
     def __init__(
         self,
@@ -252,20 +281,20 @@ class SentimentClassifier(nn.Module):
     ) -> None:
         super().__init__()
 
-        # Create transformer WITHOUT output projection (we need hidden states)
+        # Build the transformer without an output projection.
         self.transformer = XSALAKERTransformer(
             config,
             num_layers=num_layers,
             d_ff=config.d_model * 4,
-            vocab_size=vocab_size,  # For embedding
+            vocab_size=vocab_size,
             max_seq_len=max_seq_len,
             dropout=dropout,
             attention_type=attention_type,
         )
-        # Remove output projection since we do classification
+        # Strip the output projection — classifier head takes hidden states.
         self.transformer.output_proj = None
 
-        # Classification head: use [CLS]-equivalent (first position)
+        # Two-layer MLP classifier on first-position hidden states.
         self.classifier = nn.Sequential(
             nn.Linear(config.d_model, config.d_model),
             nn.GELU(),
@@ -274,16 +303,10 @@ class SentimentClassifier(nn.Module):
         )
 
     def forward(self, input_ids: torch.Tensor) -> torch.Tensor:
-        """Forward pass returning logits."""
-        # Get transformer output (hidden states)
+        """Run the transformer + MLP head; return ``(batch, num_classes)`` logits."""
         hidden = self.transformer(input_ids)
-
-        # Pool: use first token (like CLS)
         pooled = hidden[:, 0, :]
-
-        # Classify
-        logits = self.classifier(pooled)
-        return logits
+        return self.classifier(pooled)
 
 
 def train_classifier(
@@ -294,7 +317,11 @@ def train_classifier(
     learning_rate: float,
     device: torch.device,
 ) -> Dict[str, List[float]]:
-    """Train classifier and return history."""
+    """Train ``model`` with AdamW (lr, weight_decay 0.01) + grad-norm clip 1.0.
+
+    Returns:
+        ``{"train_losses", "val_losses", "train_accs", "val_accs"}``.
+    """
     model = model.to(device)
     optimizer = torch.optim.AdamW(
         model.parameters(), lr=learning_rate, weight_decay=0.01
@@ -373,7 +400,11 @@ def evaluate_classifier(
     test_loader: DataLoader,
     device: torch.device,
 ) -> Tuple[float, float]:
-    """Evaluate classifier on test set."""
+    """Return ``(accuracy, f1)`` across the whole test loader.
+
+    F1 is computed over the positive class (``label == 1``) and falls
+    back to ``0`` when ``precision + recall == 0``.
+    """
     model.eval()
     correct = 0
     total = 0
@@ -422,7 +453,15 @@ def run_nlp_benchmark(
     num_samples: int = 2000,
     seed: int = 42,
 ) -> Dict[str, Any]:
-    """Run NLP sentiment benchmark."""
+    """Train both attention types on ``dataset_name`` and compare.
+
+    ``test_loader`` is also reused as the validation loader for the
+    trainer (so ``val_accs`` is a biased estimator on real datasets).
+
+    Raises:
+        ValueError: If ``dataset_name`` is not ``"synthetic"`` / ``"imdb"``
+            / ``"agnews"``.
+    """
     torch.manual_seed(seed)
     random.seed(seed)
 
@@ -572,7 +611,7 @@ def run_nlp_benchmark(
 
 
 def main() -> None:
-    """Main entry point."""
+    """Parse CLI args and run the NLP benchmark; optionally write JSON."""
     parser = argparse.ArgumentParser(description="NLP Sentiment Benchmark")
     parser.add_argument(
         "--dataset",
