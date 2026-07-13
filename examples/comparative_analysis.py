@@ -1,23 +1,13 @@
 #!/usr/bin/env python3
-"""
-Comparative Analysis: XSA+LAKER vs Standard Transformer.
+"""Comparative analysis: standard vs. fused (v1) attention on tasks
+that stress long-range dependency modelling, context-only aggregation,
+and numerical conditioning.
 
-This script provides a quantitative comparison between the fused XSA+LAKER
-attention and standard Transformer attention on tasks that benefit from:
-1. Long-range dependency modeling
-2. Context-only aggregation (no self-attention copying)
-3. Improved numerical conditioning
-
-The analysis measures:
-- Task performance (accuracy/loss)
-- Conditioning metrics (condition number, solver convergence)
-- Runtime overhead
-- Gradient flow quality
+Set ``attention_type="fused_v2"`` for the current
+:class:`LakerAttention`.
 
 Usage:
     python -m examples.comparative_analysis --task copy --seq-len 64
-    python -m examples.comparative_analysis --task reversal --seq-len 32
-    python -m examples.comparative_analysis --task induction --seq-len 48
 """
 
 from __future__ import annotations
@@ -36,9 +26,7 @@ from laker_xsa.model.full_model import XSALAKERTransformer
 from laker_xsa.attention.standard_attention import StandardMultiHeadAttention
 from laker_xsa.attention.kernel_attention import FusedXSALAKERAttention
 
-# =============================================================================
-# Task Definitions
-# =============================================================================
+# Task definitions
 
 
 def create_copy_task(
@@ -46,10 +34,16 @@ def create_copy_task(
     seq_len: int,
     vocab_size: int,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """
-    Create a copy task: output equals input.
+    """Build a copy task where the target equals the input.
 
-    This tests basic sequence-to-sequence modeling.
+    Args:
+        num_samples: Number of independently sampled sequences.
+        seq_len: Length of each sequence.
+        vocab_size: Vocabulary size.
+
+    Returns:
+        ``(input_ids, target_ids)`` of shape ``(num_samples, seq_len)``
+        and dtype ``torch.long``.
     """
     input_ids = torch.randint(0, vocab_size, (num_samples, seq_len))
     target_ids = input_ids.clone()
@@ -61,11 +55,17 @@ def create_reversal_task(
     seq_len: int,
     vocab_size: int,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """
-    Create a reversal task: output is reversed input.
+    """Build a reversal task where the target is the reversed input.
 
-    This tests long-range dependency modeling as each position
-    must attend to a distant position.
+    Args:
+        num_samples: Number of independently sampled sequences.
+        seq_len: Length of each sequence.
+        vocab_size: Vocabulary size.
+
+    Returns:
+        ``(input_ids, target_ids)`` of shape ``(num_samples, seq_len)``
+        and dtype ``torch.long``; ``target_ids`` is ``input_ids`` reversed
+        along the time axis.
     """
     input_ids = torch.randint(0, vocab_size, (num_samples, seq_len))
     target_ids = input_ids.flip(dims=[1])
@@ -77,26 +77,41 @@ def create_induction_task(
     seq_len: int,
     vocab_size: int,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """
-    Create an induction task: predict next occurrence of same token.
+    """Build an induction-head task that predicts the next repeat of each token.
 
-    For input [A, B, A, C, B, ...], predict [B, ?, ?, ?, A, ...]
-    This tests in-context learning and pattern matching.
+    For position ``i`` the target is the next occurrence of
+    ``input_ids[:, i]`` in ``input_ids[:, i+1:]``; if no such occurrence
+    exists the input token itself is copied. The final position has no
+    future context, so its target echoes the input token.
+
+    Args:
+        num_samples: Number of independently sampled sequences.
+        seq_len: Length of each sequence.
+        vocab_size: Vocabulary size.
+
+    Returns:
+        ``(input_ids, target_ids)`` of shape ``(num_samples, seq_len)``
+        and dtype ``torch.long``.
+
+    Notes:
+        ``O(num_samples * seq_len ** 2)`` Python work — fine for the small
+        tasks used here, not for large-scale experiments.
     """
     input_ids = torch.randint(0, vocab_size, (num_samples, seq_len))
     target_ids = torch.zeros_like(input_ids)
 
     for i in range(seq_len - 1):
         for batch in range(num_samples):
-            # Find next occurrence of current token
+            # Find next occurrence of current token.
             current_token = input_ids[batch, i]
             next_pos = torch.where(input_ids[batch, i + 1 :] == current_token)[0]
             if len(next_pos) > 0:
                 target_ids[batch, i] = input_ids[batch, i + 1 + next_pos[0]]
             else:
-                target_ids[batch, i] = input_ids[batch, i]  # Default to self
+                # Default to self when no future occurrence exists.
+                target_ids[batch, i] = input_ids[batch, i]
 
-    # Last position has no target
+    # Last position has no future context, so echo the input token.
     target_ids[:, -1] = input_ids[:, -1]
 
     return input_ids, target_ids
@@ -107,18 +122,30 @@ def create_addition_task(
     seq_len: int,
     vocab_size: int = 100,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """
-    Create an addition task: sum all numbers in sequence.
+    """Build an addition task where the model must sum a numeric prefix.
 
-    Input: [num1, num2, ..., numN, <sep>, 0, 0, ...]
-    Output: [<sep>, 0, ..., sum, 0, ...]
+    Layout:
 
-    This tests aggregation and arithmetic reasoning.
+    * Positions ``[0, seq_len - 2)``: integer digits sampled uniformly from
+      ``[0, 10)``.
+    * Position ``seq_len - 2``: separator token ``vocab_size - 1``.
+    * Position ``seq_len - 1``: reserved output slot (zero on the input
+      side, sum modulo ``vocab_size`` on the target side).
+
+    Args:
+        num_samples: Number of independently sampled sequences.
+        seq_len: Total sequence length; must be at least 3.
+        vocab_size: Vocabulary size. Defaults to 100. The final digit
+            target is reduced modulo ``vocab_size``.
+
+    Returns:
+        ``(input_ids, target_ids)`` of shape ``(num_samples, seq_len)``
+        and dtype ``torch.long``.
     """
-    # Generate random numbers (0-9)
+    # Generate random digits 0-9 in the payload slots.
     numbers = torch.randint(0, 10, (num_samples, seq_len - 2))
 
-    # Add separator token (vocab_size - 1) at position seq_len - 2
+    # Separator marker at position ``seq_len - 2``; final slot held at zero.
     sep_token = vocab_size - 1
     input_ids = torch.cat(
         [
@@ -129,7 +156,7 @@ def create_addition_task(
         dim=1,
     )
 
-    # Target: sum at separator position + 1
+    # Target: sum modulo vocab_size placed at the final position.
     target_ids = torch.zeros_like(input_ids)
     sums = numbers.sum(dim=1)
     target_ids[:, seq_len - 1] = sums % vocab_size
@@ -137,9 +164,7 @@ def create_addition_task(
     return input_ids, target_ids
 
 
-# =============================================================================
-# Model Training
-# =============================================================================
+# Model training
 
 
 def create_model(
@@ -151,7 +176,21 @@ def create_model(
     attention_type: str,
     dropout: float = 0.1,
 ) -> XSALAKERTransformer:
-    """Create a Transformer model with specified attention type."""
+    """Construct an :class:`XSALAKERTransformer` with the requested attention.
+
+    Uses ``XSA_LAKER_Config`` with ``kernel_type="rbf"``,
+    ``xsa_mode="subtract_projection"``, ``num_iterations=10`` (v1 path
+    knob), ``preconditioner_rank=d_model // 16``, and ``d_ff = 4 * d_model``.
+
+    Args:
+        d_model: Embedding / hidden dimension.
+        num_heads: Number of attention heads.
+        num_layers: Number of stacked Transformer blocks.
+        vocab_size: Token vocabulary size.
+        max_seq_len: Maximum sequence length for the positional embedding.
+        attention_type: Forwarded to :class:`XSALAKERTransformer`.
+        dropout: Dropout probability.
+    """
     config = XSA_LAKER_Config(
         d_model=d_model,
         num_heads=num_heads,
@@ -183,18 +222,27 @@ def train_model(
     learning_rate: float,
     device: torch.device,
 ) -> Dict[str, List[float]]:
-    """Train model and return training history."""
+    """Train ``model`` with AdamW (weight_decay=0.01) + L2-norm grad clip 1.0.
+
+    Returns:
+        ``{"train_losses": [...], "val_losses": [...]}`` lists of per-epoch
+        mean cross-entropy values.
+
+    Notes:
+        Loss is :class:`nn.CrossEntropyLoss` on flattened
+        ``(batch * seq_len, vocab)`` logits against flattened targets; no
+        label smoothing or PAD-mask handling is applied.
+    """
     model = model.to(device)
     optimizer = torch.optim.AdamW(
         model.parameters(), lr=learning_rate, weight_decay=0.01
     )
     criterion = nn.CrossEntropyLoss()
-
     train_losses = []
     val_losses = []
 
     for epoch in range(num_epochs):
-        # Training
+        # Training phase
         model.train()
         epoch_train_loss = 0.0
         num_batches = 0
@@ -216,7 +264,7 @@ def train_model(
             epoch_train_loss += loss.item()
             num_batches += 1
 
-        # Validation
+        # Validation phase
         model.eval()
         epoch_val_loss = 0.0
         num_batches = 0
@@ -244,7 +292,11 @@ def evaluate_model(
     test_loader: DataLoader,
     device: torch.device,
 ) -> Tuple[float, float]:
-    """Evaluate model on test set and return loss and accuracy."""
+    """Return ``(avg_loss, accuracy)`` across the whole test loader.
+
+    Accuracy is computed across every position (no PAD-mask awareness).
+    The model is placed in ``eval()`` mode for the call and left there.
+    """
     model.eval()
     total_loss = 0.0
     correct = 0
@@ -272,9 +324,7 @@ def evaluate_model(
     return avg_loss, accuracy
 
 
-# =============================================================================
-# Analysis Functions
-# =============================================================================
+# Analysis functions
 
 
 def measure_conditioning(
@@ -282,14 +332,29 @@ def measure_conditioning(
     seq_len: int,
     device: torch.device,
 ) -> Dict[str, float]:
-    """Measure kernel matrix conditioning for the model."""
+    """Trace-vs-diagonal conditioning proxy on the first block's kernel.
+
+    Reads ``blocks[0].attention.w_q`` / ``w_k`` / ``kernel_fn`` (present
+    only when ``attention_type`` exposes them — i.e. ``"fused"``); returns
+    ``{"condition_estimate": inf}`` otherwise.
+
+    Returns:
+        ``{"trace_norm": float, "diag_sum": float, "condition_estimate": float}``
+        on success; ``{"condition_estimate": float("inf")}`` if the
+        attention has no ``kernel_fn`` attribute.
+
+    Notes:
+        This is a *trace proxy*, not the true ``sigma_max / sigma_min``
+        condition number. For rigorous analysis use
+        :func:`laker_xsa.benchmarks.conditioning.compute_conditioning_metrics`.
+    """
     model.eval()
     config = model.config
 
-    # Create random input
+    # Random probe input: shape (1, seq_len, d_model) on the target device.
     x = torch.randn(1, seq_len, config.d_model, device=device)
 
-    # Get kernel matrix from first layer
+    # Pull the kernel from the first layer's attention module (v1 path).
     with torch.no_grad():
         block = model.blocks[0]
         if hasattr(block.attention, "kernel_fn"):
@@ -300,13 +365,12 @@ def measure_conditioning(
 
             kernel = block.attention.kernel_fn(q, k)
 
-            # Compute condition number estimate
-            # Use ratio of max to min eigenvalue approximation
-            kernel_flat = kernel[0, 0]  # Take first head
+            # Reduce to a single head for the proxy.
+            kernel_flat = kernel[0, 0]
             trace = kernel_flat.abs().sum()
             diag_sum = torch.diagonal(kernel_flat).abs().sum()
 
-            # Condition number estimate (higher = worse conditioning)
+            # Off-diagonal-heavy kernels yield larger trace/diag ratios.
             condition_estimate = trace / (diag_sum + 1e-6)
 
             return {
@@ -323,7 +387,15 @@ def measure_gradient_norm(
     input_ids: torch.Tensor,
     device: torch.device,
 ) -> Dict[str, float]:
-    """Measure gradient norms during training."""
+    """Forward + ``logits.sum().backward()``; report gradient magnitudes.
+
+    A fresh AdamW (lr 1e-3) is constructed; parameters are not stepped.
+    Per-parameter grads default to ``0.0`` if the parameter lacked a
+    gradient (e.g. unused embedding rows).
+
+    Returns:
+        ``{"total_gradient_norm", "embedding_grad", "output_proj_grad"}``.
+    """
     model.train()
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
 
@@ -332,7 +404,7 @@ def measure_gradient_norm(
     loss = logits.sum()
     loss.backward()
 
-    # Collect gradient norms
+    # Accumulate per-parameter L2 norms and a global L2.
     grad_norms = {}
     total_norm = 0.0
 
@@ -357,17 +429,25 @@ def measure_inference_speed(
     device: torch.device,
     num_runs: int = 50,
 ) -> Dict[str, float]:
-    """Measure inference speed."""
+    """Measure forward-pass throughput under ``eval()`` mode.
+
+    Methodology: batch size ``4``; five warm-up forwards precede
+    :func:`time.perf_counter`-gated timing; CUDA devices additionally
+    call :func:`torch.cuda.synchronize` around the timed window.
+
+    Returns:
+        ``{"ms_per_sample": float, "samples_per_second": float}``.
+    """
     model.eval()
     batch_size = 4
     input_ids = torch.randint(0, 100, (batch_size, seq_len), device=device)
 
-    # Warmup
+    # Warm-up
     for _ in range(5):
         with torch.no_grad():
             _ = model(input_ids)
 
-    # Timing
+    # Timed window with optional CUDA sync.
     torch.cuda.synchronize() if torch.cuda.is_available() else None
     start = time.perf_counter()
 
@@ -386,9 +466,7 @@ def measure_inference_speed(
     }
 
 
-# =============================================================================
-# Main Analysis
-# =============================================================================
+# Main analysis
 
 
 TASKS = {
@@ -412,7 +490,14 @@ def run_comparative_analysis(
     learning_rate: float = 1e-3,
     seed: int = 42,
 ) -> Dict[str, Any]:
-    """Run full comparative analysis between attention types."""
+    """Train both attention types on ``task_name`` and report a comparison.
+
+    Dataset sizes are hard-coded (1000 / 200 / 200 train / val / test,
+    batch size 16).
+
+    Raises:
+        ValueError: If ``task_name`` is not in :data:`TASKS`.
+    """
     torch.manual_seed(seed)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -470,7 +555,6 @@ def run_comparative_analysis(
         total_params = sum(p.numel() for p in model.parameters())
         print(f"Model parameters: {total_params:,}")
 
-        # Train
         history = train_model(
             model=model,
             train_loader=train_loader,
@@ -516,7 +600,7 @@ def run_comparative_analysis(
             f"  Inference Speed: {speed_metrics['samples_per_second']:.1f} samples/sec"
         )
 
-    # Compute improvement metrics
+    # Compute improvement metrics when both runs completed.
     if (
         "standard" in results["attention_types"]
         and "fused" in results["attention_types"]
@@ -560,7 +644,7 @@ def run_comparative_analysis(
 
 
 def main() -> None:
-    """Main entry point."""
+    """Parse CLI args, run the analysis, and optionally write JSON output."""
     parser = argparse.ArgumentParser(
         description="Comparative analysis: XSA+LAKER vs Standard Transformer"
     )
@@ -644,7 +728,7 @@ def main() -> None:
     )
 
     if args.output:
-        # Remove large lists for JSON output
+        # Strip the per-epoch loss lists to keep the JSON output compact.
         output_results = results.copy()
         for attn_type in output_results["attention_types"]:
             output_results["attention_types"][attn_type]["train_losses"] = []
