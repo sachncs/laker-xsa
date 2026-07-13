@@ -1,9 +1,11 @@
-from __future__ import annotations
+"""Utility functions for masks, validation, stability, and RNG state.
 
-# Utility functions for LAKER-XSA.
-#
-# This package provides tensor operations, stability utilities, and
-# random seed management.
+Tensor and stability helpers retain no module-local state. The seeding helpers
+are intentionally stateful at the process level: they seed global Python,
+NumPy, PyTorch, and optional CUDA generators and can change cuDNN settings.
+"""
+
+from __future__ import annotations
 
 from laker_xsa.utils.tensor_ops import (
     create_causal_mask,
