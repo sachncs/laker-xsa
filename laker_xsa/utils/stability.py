@@ -1,8 +1,8 @@
-"""
-Numerical stability utilities for LAKER-XSA.
+"""Standalone finite-value detection and tensor-clamping helpers.
 
-This module provides functions for checking tensor validity and
-applying numerical safeguards.
+These utilities are exported for callers that want explicit numerical checks.
+The current attention and solver implementations use their own local clamps and
+do not automatically invoke these functions.
 """
 
 from __future__ import annotations
@@ -17,23 +17,37 @@ def check_finite(
     name: str = "tensor",
     raise_error: bool = True,
 ) -> bool:
-    """
-    Check if tensor contains only finite values.
+    """Check that a tensor contains only finite values.
 
-    Detects NaN and Inf values that can arise from numerical instabilities
-    in attention computation or iterative solving.
+    The check is a single :func:`torch.isfinite` reduction across
+    the entire tensor. On failure, the function can either raise
+    a :class:`ValueError` with a precise breakdown (number of
+    ``NaN``s, ``+Inf``s, and ``-Inf``s) or simply return
+    ``False`` for non-raising callers. The breakdown is computed
+    only on the error path, so the hot path is a single reduction
+    regardless of the answer.
 
     Args:
-        x: Tensor to check.
-        name: Name for error messages.
-        raise_error: If ``True``, raise ``ValueError`` on non-finite values.
-            If ``False``, return ``False``.
+        x: Tensor to check. Any dtype is accepted, but the check
+            is most meaningful for floating-point tensors; integer
+            tensors are always finite.
+        name: Human-readable name used in error messages to
+            identify which tensor failed. Defaults to
+            ``"tensor"``.
+        raise_error: When ``True`` (the default), raise
+            :class:`ValueError` on the first non-finite sample.
+            When ``False``, return ``False`` and stay silent -
+            useful for callers that prefer to log and continue.
 
     Returns:
-        ``True`` if all values are finite.
+        ``True`` if every entry of ``x`` is finite. ``False`` if
+        any entry is non-finite and ``raise_error`` is ``False``.
 
     Raises:
-        ValueError: If ``raise_error=True`` and non-finite values found.
+        ValueError: If ``raise_error`` is ``True`` and ``x``
+            contains at least one ``NaN``, ``+Inf``, or
+            ``-Inf``. The message reports the per-kind counts
+            and the tensor's shape.
 
     Example:
         >>> x = torch.randn(10, 10)
@@ -45,7 +59,6 @@ def check_finite(
 
     if not is_finite:
         if raise_error:
-            # Count different types of non-finite values
             nan_count = torch.isnan(x).sum().item()
             inf_count = torch.isposinf(x).sum().item()
             neg_inf_count = torch.isneginf(x).sum().item()
@@ -66,19 +79,35 @@ def clamp_tensor(
     max_val: Optional[float] = None,
     name: str = "tensor",  # pylint: disable=unused-argument
 ) -> torch.Tensor:
-    """
-    Clamp tensor values to a specified range.
+    """Clamp a tensor to a closed interval.
 
-    Used to prevent numerical overflow/underflow in attention computation.
+    A small wrapper over :func:`torch.clamp` that treats
+    ``None`` for either bound as "no bound on that side". When
+    both bounds are ``None`` the function returns ``x`` itself,
+    with no copy. The returned tensor is a fresh tensor whenever
+    at least one bound is supplied.
+
+    The ``name`` argument is accepted for API symmetry with
+    :func:`check_finite` and is not used inside the function -
+    it exists so callers can swap the two helpers without
+    changing their call sites.
 
     Args:
         x: Tensor to clamp.
-        min_val: Minimum value. If ``None``, no lower bound.
-        max_val: Maximum value. If ``None``, no upper bound.
-        name: Name for logging.
+        min_val: Lower bound. ``None`` means "no lower bound".
+        max_val: Upper bound. ``None`` means "no upper bound".
+        name: Name for logging. Currently unused; preserved for
+            API symmetry.
 
     Returns:
-        Clamped tensor (in-place if possible).
+        A tensor of the same shape and dtype as ``x`` with values
+        clipped to ``[min_val, max_val]``. The result shares
+        storage with ``x`` only when no clamp is applied; any
+        actual clamping produces a new tensor.
+
+    Raises:
+        ValueError: If both ``min_val`` and ``max_val`` are
+            supplied and ``min_val > max_val``.
 
     Example:
         >>> x = torch.tensor([-1e10, 0.0, 1e10])
