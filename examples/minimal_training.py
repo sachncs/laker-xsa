@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
-"""
-Minimal training example with LAKER-XSA.
+"""Minimal training smoke test: build a small
+:class:`XSALAKERTransformer` with ``attention_type="fused"``
+(deprecated v1 — use ``"fused_v2"`` for the current
+:class:`LakerAttention`), train on a synthetic reversal task, and
+print predictions.
 
-This script demonstrates training a small Transformer on a synthetic task.
+AdamW without explicit weight decay, cross-entropy over flattened
+logits, L2-norm gradient clipping at 1.0, and ``d_ff=256`` are
+hard-coded.
 
 Usage:
     python -m examples.minimal_training
@@ -25,22 +30,13 @@ def create_copy_task(
     seq_len: int,
     vocab_size: int,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """
-    Create a copy task dataset.
-
-    The model must copy the input sequence to the output.
-    This tests basic sequence modeling capability.
-
-    Args:
-        num_samples: Number of samples.
-        seq_len: Sequence length.
-        vocab_size: Vocabulary size.
+    """Build copy tasks: target equals input.
 
     Returns:
-        Tuple of (input_ids, target_ids).
+        ``(input_ids, target_ids)`` of shape ``(num_samples, seq_len)``.
     """
     input_ids = torch.randint(0, vocab_size, (num_samples, seq_len))
-    target_ids = input_ids.clone()  # Copy task: target = input
+    target_ids = input_ids.clone()
     return input_ids, target_ids
 
 
@@ -49,27 +45,18 @@ def create_reversal_task(
     seq_len: int,
     vocab_size: int,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """
-    Create a reversal task dataset.
-
-    The model must reverse the input sequence.
-    This tests long-range dependency modeling.
-
-    Args:
-        num_samples: Number of samples.
-        seq_len: Sequence length.
-        vocab_size: Vocabulary size.
+    """Build reversal tasks: target is the input reversed.
 
     Returns:
-        Tuple of (input_ids, target_ids).
+        ``(input_ids, target_ids)`` of shape ``(num_samples, seq_len)``.
     """
     input_ids = torch.randint(0, vocab_size, (num_samples, seq_len))
-    target_ids = input_ids.flip(dims=[1])  # Reverse
+    target_ids = input_ids.flip(dims=[1])
     return input_ids, target_ids
 
 
 def main() -> None:
-    """Run minimal training example."""
+    """Run the minimal training smoke test end-to-end."""
     print("=" * 60)
     print("LAKER-XSA Minimal Training Example")
     print("=" * 60)
