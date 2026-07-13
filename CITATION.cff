@@ -3,11 +3,15 @@ message: "If you use this software, please cite it as below."
 title: "LAKER-XSA: Fused Exclusive Self Attention and LAKER Kernel Attention"
 abstract: "Production-grade implementation of fused Exclusive Self Attention (XSA) and LAKER-style Kernel Attention for Transformer models."
 authors:
-  - family-names: "LAKER-XSA Contributors"
-    name: "LAKER-XSA Contributors"
+  - family-names: "sachin"
+    name: "sachin"
+    email: "sachncs@gmail.com"
 version: 0.2.3
 date-released: 2026-05-02
-url: "https://github.com/sachn-cs/laker-xsa"
+url: "https://github.com/sachncs/laker-xsa"
+contact:
+  - name: "sachin"
+    email: "sachncs@gmail.com"
 keywords:
   - "attention"
   - "transformer"

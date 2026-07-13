@@ -34,10 +34,10 @@ from typing import Any, Dict, List, Optional
 
 import torch
 from torch import nn
-from torch.nn.functional import softplus
-
 from laker_xsa.attention._legacy import FusedXSALAKERAttention
 from laker_xsa.config import XSA_LAKER_Config
+
+_SOFTPLUS = nn.Softplus()
 
 
 def runtime_profile(
@@ -264,12 +264,11 @@ def profile_iterations(
         kernel_diag = torch.diagonal(kernel, dim1=-2, dim2=-1)
         diag_precond, lr_precond = attn.preconditioner(kernel_diag, seq_len)
 
-        # pylint: disable-next=not-callable
         # softplus keeps ``lambda_reg`` strictly positive as a ridge
         # term; the ``config.eps`` floor matches the v1 module's
         # stabiliser. Note this does not by itself guarantee an SPD
         # system when the kernel is nonsymmetric.
-        lambda_reg = softplus(attn.lambda_reg) + config.eps
+        lambda_reg = _SOFTPLUS(attn.lambda_reg) + config.eps
 
         kernel_reg = kernel.clone()
         eye = torch.eye(seq_len, device=device, dtype=kernel.dtype)

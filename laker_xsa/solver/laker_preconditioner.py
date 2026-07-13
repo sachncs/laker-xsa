@@ -24,8 +24,9 @@ from typing import Optional, Tuple, Union, cast
 
 import torch
 from torch import nn
-from torch.linalg import eigh, vector_norm
-from torch.nn.functional import softplus
+from torch.linalg import eigh
+
+_SOFTPLUS = nn.Softplus()
 
 PreconditionerData = Union[
     torch.Tensor, Tuple[torch.Tensor, Optional[torch.Tensor]], None
@@ -255,7 +256,7 @@ class LakerPreconditioner(nn.Module):
             Kz = torch.matmul(kernel, z)
             u = Kz + lambda_reg * z
 
-            u_norm = vector_norm(u, dim=-2, keepdim=True)
+            u_norm = torch.sqrt(torch.sum(u * u, dim=-2, keepdim=True))
             ubar = u / (u_norm + self.eps_safeguard)
 
             ubar_list.append(ubar.squeeze(-1))
@@ -532,7 +533,7 @@ class LakerPreconditioner(nn.Module):
         # non-negative, and the user-supplied eps may be any sign. The
         # config path guarantees eps > 0, which is the only knob that can
         # make this expression non-positive for direct callers.
-        diag = softplus(kernel_diag + lambda_reg.squeeze(-1).squeeze(-1))
+        diag = _SOFTPLUS(kernel_diag + lambda_reg.squeeze(-1).squeeze(-1))
         # |diag_scale| prevents the learnable scalar from flipping the
         # sign of the softplus output; the trailing + eps is a floor whose
         # sign is not validated.
@@ -547,7 +548,7 @@ class LakerPreconditioner(nn.Module):
             # the non-negativity of importance only controls the
             # per-rank magnitude of the U U^T term, not its sign or PSD
             # status.
-            importance = softplus(self.lr_importance)  # pylint: disable=not-callable
+            importance = _SOFTPLUS(self.lr_importance)
 
             # Broadcasting: importance has shape (num_heads, rank) and is
             # unsqueezed to (num_heads, 1, rank) to scale each position.
@@ -592,8 +593,8 @@ class LakerPreconditioner(nn.Module):
             system SPD.
         """
         kernel_diag = torch.diagonal(kernel, dim1=-2, dim2=-1)
-        diag = softplus(kernel_diag + lambda_reg.squeeze(-1).squeeze(-1))
-        return diag * self.diag_scale.abs() + self.eps
+        diag = _SOFTPLUS(kernel_diag + lambda_reg.squeeze(-1).squeeze(-1))
+        return cast(PreconditionerData, diag * self.diag_scale.abs() + self.eps)
 
     def compute_preconditioner(
         self,

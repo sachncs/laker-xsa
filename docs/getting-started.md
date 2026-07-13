@@ -13,7 +13,7 @@ This guide walks you through installing LAKER-XSA and running your first experim
 ### From source (recommended)
 
 ```bash
-git clone https://github.com/sachn-cs/laker-xsa.git
+git clone https://github.com/sachncs/laker-xsa.git
 cd laker-xsa
 pip install -e .
 ```

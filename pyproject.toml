@@ -10,7 +10,7 @@ readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.9"
 authors = [
-    {name = "LAKER-XSA Contributors"}
+    {name = "sachin", email = "sachncs@gmail.com"}
 ]
 keywords = [
     "attention",
@@ -53,10 +53,10 @@ train = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/sachn-cs/laker-xsa"
-Repository = "https://github.com/sachn-cs/laker-xsa.git"
-Issues = "https://github.com/sachn-cs/laker-xsa/issues"
-Changelog = "https://github.com/sachn-cs/laker-xsa/blob/master/CHANGELOG.md"
+Homepage = "https://github.com/sachncs/laker-xsa"
+Repository = "https://github.com/sachncs/laker-xsa.git"
+Issues = "https://github.com/sachncs/laker-xsa/issues"
+Changelog = "https://github.com/sachncs/laker-xsa/blob/master/CHANGELOG.md"
 
 [project.scripts]
 laker-xsa-train = "laker_xsa.cli.train:main"

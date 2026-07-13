@@ -45,7 +45,7 @@ We use [Dependabot](https://github.com/dependabot) to monitor dependencies for k
 
 ## Scope
 
-This security policy applies to the LAKER-XSA package distributed via PyPI and the source code in the official GitHub repository at [github.com/sachn-cs/laker-xsa](https://github.com/sachn-cs/laker-xsa).
+This security policy applies to the LAKER-XSA package distributed via PyPI and the source code in the official GitHub repository at [github.com/sachncs/laker-xsa](https://github.com/sachncs/laker-xsa).
 
 It does not apply to:
 

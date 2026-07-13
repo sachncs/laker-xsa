@@ -233,9 +233,9 @@ laker-xsa/
 ```bibtex
 @software{laker-xsa,
   title = {LAKER-XSA: Fused Exclusive Self Attention and LAKER Kernel Attention},
-  author = {LAKER-XSA Contributors},
+  author = {sachin},
   year = {2026},
-  url = {https://github.com/your-org/laker-xsa},
+  url = {https://github.com/sachncs/laker-xsa},
 }
 ```
 

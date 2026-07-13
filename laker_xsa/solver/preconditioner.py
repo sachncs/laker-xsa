@@ -14,9 +14,10 @@ from typing import Optional, Tuple
 
 import torch
 from torch import nn
-from torch.nn.functional import softplus
 
 from laker_xsa.config import XSA_LAKER_Config
+
+_SOFTPLUS = nn.Softplus()
 
 
 class LearnedPreconditioner(nn.Module):
@@ -129,7 +130,7 @@ class LearnedPreconditioner(nn.Module):
 
         # Broadcasting: diag_scale has shape (1, num_heads, 1) and
         # broadcasts against (batch, num_heads, seq_len) kernel_diag.
-        diag_precond = softplus(kernel_diag) * self.diag_scale + self.reg
+        diag_precond = _SOFTPLUS(kernel_diag) * self.diag_scale + self.reg
 
         lr_precond: Optional[torch.Tensor] = None
         if self.rank is not None and self.rank > 0 and self.pos_embedding.numel() > 0:
