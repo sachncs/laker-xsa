@@ -5,6 +5,7 @@
     <a href="#installation"><img src="https://img.shields.io/badge/python-3.9%20%7C%203.10%20%7C%203.11%20%7C%203.12-blue" alt="Python"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License"></a>
     <a href="https://github.com/sachncs/laker-xsa/actions"><img src="https://img.shields.io/github/actions/workflow/status/sachncs/laker-xsa/ci.yml?branch=master" alt="CI"></a>
+    <a href="https://pypi.org/project/laker-xsa/"><img src="https://img.shields.io/pypi/v/laker-xsa" alt="PyPI"></a>
     <a href="https://github.com/sachncs/laker-xsa/stargazers"><img src="https://img.shields.io/github/stars/sachncs/laker-xsa" alt="Stars"></a>
     <a href="https://github.com/sachncs/laker-xsa/blob/master/pyproject.toml"><img src="https://img.shields.io/badge/PyTorch-2.0+-ee4c2c?logo=pytorch" alt="PyTorch"></a>
   </p>
@@ -42,7 +43,13 @@ Preconditioned Conjugate Gradient (PCG) iteration.
 
 ## Installation
 
-### From source (recommended)
+### From PyPI
+
+```bash
+pip install laker-xsa
+```
+
+### From source
 
 ```bash
 git clone https://github.com/sachncs/laker-xsa.git
@@ -59,6 +66,22 @@ pip install -e ".[dev,bench,train]"
 ---
 
 ## Quick Start
+
+### CLI
+
+```bash
+# Train a model
+python -m laker_xsa.cli.train \
+    --d-model 256 --num-heads 4 --num-layers 4 \
+    --num-epochs 10 --batch-size 8 --attention-type fused_v2
+
+# Benchmark attention variants
+python -m laker_xsa.cli.benchmark \
+    --d-model 512 --num-heads 8 --num-runs 50 --output results.json
+
+# Evaluate a checkpoint
+python -m laker_xsa.cli.evaluate --checkpoint path/to/checkpoint.pt
+```
 
 ### Python API
 
@@ -82,22 +105,6 @@ model = XSALAKERTransformer(
 logits = model(torch.randint(0, 32000, (2, 128)))
 ```
 
-### CLI
-
-```bash
-# Train a model
-python -m laker_xsa.cli.train \
-    --d-model 256 --num-heads 4 --num-layers 4 \
-    --num-epochs 10 --batch-size 8 --attention-type fused_v2
-
-# Benchmark attention variants
-python -m laker_xsa.cli.benchmark \
-    --d-model 512 --num-heads 8 --num-runs 50 --output results.json
-
-# Evaluate a checkpoint
-python -m laker_xsa.cli.evaluate --checkpoint path/to/checkpoint.pt
-```
-
 ---
 
 ## Configuration
@@ -105,34 +112,14 @@ python -m laker_xsa.cli.evaluate --checkpoint path/to/checkpoint.pt
 LAKER-XSA uses a single `XSA_LAKER_Config` dataclass — no environment variables
 required.
 
-```python
-from laker_xsa import XSA_LAKER_Config
-
-config = XSA_LAKER_Config(
-    d_model=512,                      # Embedding dimension
-    num_heads=8,                      # Number of attention heads
-    head_dim=None,                    # Per-head dim (default: d_model // num_heads)
-    dropout=0.0,                      # Dropout rate
-    eps=1e-6,                         # Numerical stability epsilon
-    lambda_init=3.0,                  # Regularization for kernel system
-    kernel_type="exp_attention",      # 'exp_attention', 'rbf', 'linear', 'cosine'
-    xsa_mode="subtract_projection",   # 'subtract_projection', 'zero_diagonal', 'mask'
-    preconditioner_type="fast",       # 'cccp', 'fast', 'diagonal', 'none'
-    preconditioner_rank=32,           # Low-rank dimension for fast preconditioner
-    pcg_max_iterations=20,            # Maximum PCG iterations
-    pcg_tolerance=1e-2,               # Relative residual tolerance
-    kernel_temperature=1.0,           # Temperature for exp kernel
-)
-```
-
 ### Kernel Type
 
-| Value           | Definition                                       |
-|-----------------|--------------------------------------------------|
+| Value           | Definition                                                |
+|-----------------|-----------------------------------------------------------|
 | `exp_attention` | `K = exp(cosine(Q, K) / T)` with L2-normalized Q/K (default) |
-| `rbf`           | Gaussian RBF on pairwise Q/K distances           |
-| `linear`        | Linear kernel `K = Q K^T`                        |
-| `cosine`        | Cosine similarity without exponential scaling    |
+| `rbf`           | Gaussian RBF on pairwise Q/K distances                    |
+| `linear`        | Linear kernel `K = Q K^T`                                 |
+| `cosine`        | Cosine similarity without exponential scaling             |
 
 ### XSA Mode
 
@@ -140,7 +127,7 @@ config = XSA_LAKER_Config(
 |------------------------|-----------------------------------------------------------|
 | `subtract_projection`  | Subtract each token's self-projection from output (default) |
 | `zero_diagonal`        | Zero the diagonal of the kernel matrix                    |
-| `mask`                | Apply an additive -inf mask on the diagonal               |
+| `mask`                 | Apply an additive -inf mask on the diagonal               |
 
 ### Preconditioner
 
@@ -150,6 +137,41 @@ config = XSA_LAKER_Config(
 | `fast`     | Gradient-based low-rank + diagonal (default)                |
 | `diagonal` | Jacobi-style diagonal preconditioner                        |
 | `none`     | Identity preconditioner                                     |
+
+---
+
+## API
+
+| Symbol                                  | Type     | Description                                       |
+|-----------------------------------------|----------|---------------------------------------------------|
+| `XSA_LAKER_Config`                      | dataclass | Hyperparameters for every attention variant      |
+| `LakerAttention`                        | class    | Fused XSA + LAKER (v2) attention module           |
+| `XSALAKERTransformer`                   | class    | Full Transformer model with fused attention       |
+| `compute_kernel_matrix`                 | function | Stateless kernel matrix construction              |
+| `apply_kernel_operator`                 | function | Stateless kernel operator application            |
+| `AttentionKernel`                       | class    | Base attention module with shared QKV projection  |
+| `StandardAttention`                     | class    | Standard scaled dot-product attention baseline    |
+| `XSA`                                   | class    | Exclusive Self Attention (no self-bias)           |
+| `LakerAttentionKernel`                  | class    | LAKER kernel attention (v1)                       |
+
+---
+
+## Examples
+
+```bash
+# Train a small fused model on synthetic data
+laker-xsa-train --d-model 256 --num-heads 4 --num-layers 4 \
+    --num-epochs 10 --batch-size 8 --attention-type fused_v2
+
+# Run a benchmark sweep across attention variants
+laker-xsa-benchmark --d-model 512 --num-heads 8 --num-runs 50 --output results.json
+
+# Evaluate a saved checkpoint and emit metrics
+laker-xsa-evaluate --checkpoint artifacts/last.pt
+```
+
+See [`examples/`](examples/) for end-to-end scripts covering each attention
+variant and the full Transformer pipeline.
 
 ---
 
@@ -238,6 +260,31 @@ chore: update pyproject config
 
 ---
 
+## Testing
+
+```bash
+pytest tests/ -v
+pytest tests/ --cov=laker_xsa
+```
+
+---
+
+## Build
+
+```bash
+python -m build
+```
+
+---
+
+## Release
+
+See [docs/release.md](docs/release.md) — version is bumped in `pyproject.toml`,
+changelog updated in `CHANGELOG.md`, tagged `vX.Y.Z`, and the PyPI publishing
+workflow publishes the distribution to TestPyPI then PyPI.
+
+---
+
 ## Tech Stack
 
 | Category       | Technology                                          |
@@ -251,19 +298,6 @@ chore: update pyproject config
 | Type Check     | [mypy](https://mypy-lang.org/) 1.0+                  |
 | Benchmarks     | [matplotlib](https://matplotlib.org/), pandas       |
 | Training       | [tqdm](https://tqdm.github.io/)                     |
-
----
-
-## Benchmarks
-
-| Attention Type | Forward (ms) | Backward (ms) | Relative |
-|----------------|--------------|---------------|----------|
-| Standard       | 0.2          | 0.4           | 1.0x     |
-| XSA            | 0.3          | 0.5           | 1.5x     |
-| Kernel (v1)    | 1.5          | 2.5           | 6.0x     |
-| Fused (v1)     | 1.8          | 3.0           | 8.0x     |
-
-*Results vary by hardware and sequence length. See [RESULTS.md](RESULTS.md) for full details.*
 
 ---
 
@@ -309,14 +343,14 @@ To report security vulnerabilities, please see [SECURITY.md](SECURITY.md).
 
 @article{xsa_paper,
   title = {Exclusive Self Attention},
-  author = {XSA Authors},
+  author = {Sachin},
   journal = {arXiv preprint arXiv:2603.09078},
   year = {2026},
 }
 
 @article{laker_paper,
   title = {Learned Preconditioning for Attention Kernel Regression},
-  author = {LAKER Authors},
+  author = {Sachin},
   journal = {arXiv preprint arXiv:2604.25138},
   year = {2026},
 }
